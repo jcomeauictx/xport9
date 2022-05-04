@@ -13,9 +13,11 @@ def xpt_to_csv(filename=None, outfilename=None):
     csvout = csv.writer(outfile)
     while True:
         record = infile.read(80)
+        if not record:
+            logging.debug('conversion complete')
+            break
         logging.debug('record: %r', record)
-    infile.close()
-    outfile.close()
+        csvout.writerow([record.rstrip(b'\0')])
 
 if __name__ == '__main__':
     xpt_to_csv(*sys.argv[1:])
