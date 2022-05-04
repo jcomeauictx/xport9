@@ -2,7 +2,7 @@
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 '''
-import sys
+import sys, csv, logging  # pylint: disable=multiple-imports
 
 def xpt_to_csv(filename=None, outfilename=None):
     '''
@@ -10,6 +10,10 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
+    csvout = csv.writer(outfile)
+    while True:
+        record = infile.read(80)
+        logging.debug('record: %r', record)
     infile.close()
     outfile.close()
 
