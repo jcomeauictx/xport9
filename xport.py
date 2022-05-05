@@ -52,6 +52,8 @@ def ibm_to_double(bytestring, pack_output=False):
 
     and the mantissa has an assumed 53rd bit of 1
 
+    see https://stackoverflow.com/a/7141227/493161
+
     >>> ibm = TESTVECTORS['xpt']
     >>> ieee = TESTVECTORS['ieee']
     >>> [struct.unpack('<d', ieee[key])[0] for key in sorted(ieee)]
@@ -63,16 +65,17 @@ def ibm_to_double(bytestring, pack_output=False):
     '''
     integer = struct.unpack('>Q', bytestring)[0]
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
-    sign, remainder = integer & (1 << 63), integer & ((1 << 63) - 1)
-    exponent, mantissa = (remainder >> 56) - 64, remainder & ((1 << 56) - 1)
-    logging.debug('exponent: 0x%04x, mantissa: 0x%012x', exponent, mantissa)
-    repacked = struct.pack(
-        '<Q',
-        sign | ((exponent + 1023) << 52) | mantissa
-    )
-    logging.debug('sign 0x%016x, remainder 0x%016x, repacked %r',
-                  sign, remainder, repacked)
-    return repacked if pack_output else struct.unpack('<d', repacked)[0]
+    if integer == 0:
+        return 0.0
+    sign = -1 if integer & 0x8000000000000000 else 1
+    remainder = integer & 0x7fffffffffffffff
+    logging.debug('sign %d, remainder 0x%016x', sign, remainder)
+    exponent = (remainder >> 56) - 64
+    mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 56)
+    logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
+    double = sign * (mantissa ** exponent)
+    logging.debug('double: %f', double)
+    return struct.pack('d', double) if pack_output else double
 
 if __name__ == '__main__':
     xpt_to_csv(*sys.argv[1:])
