@@ -2,11 +2,21 @@
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 
+written so as to support older formats as well, but not tested for those.
+
 https://support.sas.com/content/dam/SAS/support/en/technical-papers/
 record-layout-of-a-sas-version-8-or-9-data-set-in-sas-transport-format.pdf
+
+note on encoding:
+    "The SAS transport file should be read in a SAS session encoding
+     that is compatible with the encoding used to create the file.
+     There is no method of conveying encoding information other than
+     documenting it with the delivery of the transport file."
 '''
-import sys, csv, struct, logging  # pylint: disable=multiple-imports
+import sys, re, csv, struct, logging  # pylint: disable=multiple-imports
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
+
+LIBRARY_HEADER = (rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$')
 
 TESTVECTORS = {
     # from PDF referenced above
@@ -29,13 +39,29 @@ def xpt_to_csv(filename=None, outfilename=None):
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
-    while True:
+    csvdata = []
+    state = 'awaiting_library_header'
+    def get_library_header(record):
+        pattern = re.compile(LIBRARY_HEADER)
+        if pattern.match(record):
+            logging.debug('found library header')
+        else:
+            raise ValueError('Invalid library header %r' % record)
+        return 'awaiting_header'
+    dispatch = {
+        'awaiting_library_header': get_library_header,
+    }
+
+    while state != 'complete':
+        logging.debug('state: %s', state)
         record = infile.read(80)
         if not record:
             logging.debug('conversion complete')
-            break
+            state = 'complete'
+            continue
         logging.debug('record: %r', record)
-        csvout.writerow([record.rstrip(b'\0')])
+        state = dispatch[state](record)
+    csvout.writerows(csvdata)
 
 def ibm_to_double(bytestring, pack_output=False):
     '''
