@@ -54,7 +54,7 @@ def ibm_to_double(bytestring, pack_output=False):
     integer = struct.unpack('>Q', bytestring)[0]
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
     sign, remainder = integer & (1 << 63), integer & ((1 << 63) - 1)
-    repacked = struct.pack('<Q', sign & (remainder >> 4))
+    repacked = struct.pack('<Q', sign | (remainder >> 4))
     logging.debug('sign 0x%016x, remainder 0x%016x, repacked %r',
                   sign, remainder, repacked)
     return repacked if pack_output else struct.unpack('<d', repacked)[0]
