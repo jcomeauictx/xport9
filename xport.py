@@ -50,7 +50,11 @@ def ibm_to_double(bytestring, pack_output=False):
     the bias of 1023 is added to the actual exponent, whereas IBM's bias
     is 64.
 
-    and the mantissa has an assumed 53rd bit of 1
+    and the IEEE mantissa is normalized to a number between 1 and 2, and
+    its representation has an assumed 53rd bit of 1; only the fractional
+    bits are stored in the low 52 bits.
+
+    whereas the IBM mantissa can be up to, but not including, 16.
 
     see https://stackoverflow.com/a/7141227/493161
 
@@ -66,14 +70,14 @@ def ibm_to_double(bytestring, pack_output=False):
     integer = struct.unpack('>Q', bytestring)[0]
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
     if integer == 0:
-        return 0.0
+        return b'\0\0\0\0\0\0\0\0' if pack_output else 0.0
     sign = -1 if integer & 0x8000000000000000 else 1
     remainder = integer & 0x7fffffffffffffff
     logging.debug('sign %d, remainder 0x%016x', sign, remainder)
     exponent = (remainder >> 56) - 64
-    mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 56)
+    mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 52)
     logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
-    double = sign * (mantissa ** exponent)
+    double = sign * mantissa ** exponent
     logging.debug('double: %f', double)
     return struct.pack('d', double) if pack_output else double
 
