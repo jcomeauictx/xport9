@@ -44,17 +44,32 @@ def ibm_to_double(bytestring, pack_output=False):
     IBM:  seeeeeeemmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
     IEEE: seeeeeeeeeeemmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
 
+    where s=sign bit, e=exponent bits, m=mantissa bits
+
+    it doesn't map directly, though: IEEE uses a "biased" exponent, where
+    the bias of 1023 is added to the actual exponent, whereas IBM's bias
+    is 64.
+
+    and the mantissa has an assumed 53rd bit of 1
+
     >>> ibm = TESTVECTORS['xpt']
     >>> ieee = TESTVECTORS['ieee']
+    >>> [struct.unpack('<d', ieee[key])[0] for key in sorted(ieee)]
+    [-1.0, 0.0, 1.0, 2.0]
     >>> [ibm_to_double(ibm[key]) for key in sorted(ibm)]
-    [-1.0, 0, 1.0, 2.0]
+    [-1.0, 0.0, 1.0, 2.0]
     >>> {key: ibm_to_double(ibm[key], True) for key in ibm} == ieee
     True
     '''
     integer = struct.unpack('>Q', bytestring)[0]
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
     sign, remainder = integer & (1 << 63), integer & ((1 << 63) - 1)
-    repacked = struct.pack('<Q', sign | (remainder >> 4))
+    exponent, mantissa = (remainder >> 56) - 64, remainder & ((1 << 56) - 1)
+    logging.debug('exponent: 0x%04x, mantissa: 0x%012x', exponent, mantissa)
+    repacked = struct.pack(
+        '<Q',
+        sign | ((exponent + 1023) << 52) | mantissa
+    )
     logging.debug('sign 0x%016x, remainder 0x%016x, repacked %r',
                   sign, remainder, repacked)
     return repacked if pack_output else struct.unpack('<d', repacked)[0]
