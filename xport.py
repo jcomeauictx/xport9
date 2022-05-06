@@ -25,7 +25,10 @@ MEMBER_HEADER = (
 DESCRIPTOR_HEADER = (
     rb'^HEADER RECORD\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
 )
-REAL_MEMBER_HEADER = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
+# "The data following the DSCPTV8 record allows for a 32-character member name.
+# "In the Version 6-styleformat, the member name was only 8 characters."
+REAL_MEMBER_HEADER_6 = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+REAL_MEMBER_HEADER_8 = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
@@ -65,6 +68,7 @@ def xpt_to_csv(filename=None, outfilename=None):
         assert match.group(1).rstrip().decode() == 'SAS'
         assert match.group(2).rstrip().decode() == 'SAS'
         document['sas_version'] = match.group(4).rstrip().decode()
+        document['real_version'] = 8  # assume v8 or v9 for now
         document['os'] = match.group(5).rstrip(b'\0 ').decode()
         document['ctime'] = decode_sas_datetime(match.group(6).decode())
         logging.debug('document: %s', document)
@@ -86,7 +90,9 @@ def xpt_to_csv(filename=None, outfilename=None):
             raise ValueError('%r is not valid descriptor header' % record)
         return 'awaiting_member_data'
     def get_member_data(record):
-        pattern = re.compile(REAL_MEMBER_HEADER)
+        real_header = 'REAL_MEMBER_HEADER_%d' % document['real_version']
+        logging.debug('assuming real member header is %s', real_header)
+        pattern = re.compile(globals()[real_header])
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid real member header' % record)
@@ -99,12 +105,12 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['os'] = match.group(5).rstrip(b'\0 ').decode()
         member['created'] = decode_sas_datetime(match.group(6).decode())
         logging.debug('member: %s', member)
-        if member['sas_version'] != document['sas_version']:
-            logging.info('version %r does not match %r', member['sas_version'],
-                         document['sas_version'])
-        if member['os'] != document['os']:
-            logging.info('os %r does not match %r', member['os'],
-                         document['os'])
+        if not (member['sas_version'] and member['os']):
+            # assume wrong "real" version, and switch
+            document['real_version'] = (6, 8)[document['real_version'] == 6]
+            logging.warning('trying again with version %d',
+                            document['real_version'])
+            return get_member_data(record)
         return 'awaiting_member_second_header'
     dispatch = {
         'awaiting_library_header': get_library_header,
