@@ -14,9 +14,11 @@ note on encoding:
      documenting it with the delivery of the transport file."
 '''
 import sys, re, csv, struct, logging  # pylint: disable=multiple-imports
+from datetime import datetime
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
-LIBRARY_HEADER = (rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$')
+LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
+REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 
 TESTVECTORS = {
     # from PDF referenced above
@@ -40,6 +42,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     csvdata = []
+    document = {}
     state = 'awaiting_library_header'
     def get_library_header(record):
         pattern = re.compile(LIBRARY_HEADER)
@@ -47,9 +50,23 @@ def xpt_to_csv(filename=None, outfilename=None):
             logging.debug('found library header')
         else:
             raise ValueError('Invalid library header %r' % record)
-        return 'awaiting_header'
+        return 'awaiting_real_header'
+    def get_real_header(record):
+        pattern = re.compile(REAL_HEADER)
+        match = pattern.match(record)
+        if match:
+            os_string = match.group(5).rstrip(b'\0 ')
+            document['os'] = os_string
+            ctime = match.group(6).decode()
+            logging.debug('ctime: %r', ctime)
+            document['ctime'] = datetime.strptime(ctime, '%d%b%y:%H:%M:%S')
+            logging.debug('document: %s', document)
+        else:
+            raise ValueError('Not finding valid header in %r' % record)
+        return 'awaiting_mtime_header'
     dispatch = {
         'awaiting_library_header': get_library_header,
+        'awaiting_real_header': get_real_header,
     }
 
     while state != 'complete':
