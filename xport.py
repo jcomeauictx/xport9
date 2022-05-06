@@ -22,6 +22,9 @@ REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 MEMBER_HEADER = (
     rb'^HEADER RECORD\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
 )
+DESCRIPTOR_HEADER = (
+    rb'^HEADER RECORD\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
+)
 
 TESTVECTORS = {
     # from PDF referenced above
@@ -74,12 +77,18 @@ def xpt_to_csv(filename=None, outfilename=None):
         if not match:
             raise ValueError('%r is not valid member header' % record)
         return 'awaiting_member_descriptor'
-
+    def get_descriptor(record):
+        pattern = re.compile(DESCRIPTOR_HEADER)
+        match = pattern.match(record)
+        if not match:
+            raise ValueError('%r is not valid descriptor header' % record)
+        return 'awaiting_member_data'
     dispatch = {
         'awaiting_library_header': get_library_header,
         'awaiting_real_header': get_real_header,
         'awaiting_mtime_header': get_mtime_header,
         'awaiting_member_header': get_member_header,
+        'awaiting_member_descriptor': get_descriptor,
     }
 
     while state != 'complete':
