@@ -30,6 +30,9 @@ DESCRIPTOR_HEADER = (
 REAL_MEMBER_HEADER_6 = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 REAL_MEMBER_HEADER_8 = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
 REAL_MEMBER_HEADER2 = rb'^(.{16}) {16}(.{40})(.{8})$'
+NAMESTR_HEADER = (
+    rb'^HEADER RECORD\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
+)
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
@@ -125,7 +128,14 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['dataset_label'] = match.group(2).rstrip().decode()
         member['dataset_type'] = match.group(3).rstrip().decode()
         logging.debug('member: %s', member)
-        return 'awaiting_namestring_header'
+        return 'awaiting_namestr_header'
+    def get_namestr_header(record):
+        pattern = re.compile(NAMESTR_HEADER)
+        match = pattern.match(record)
+        if not match:
+            raise ValueError('%r is not valid namestr header' % record)
+        logging.debug('unknown value in namestr header: %s', match.group(1))
+        return 'awaiting_namestr_records'
 
     dispatch = {
         'awaiting_library_header': get_library_header,
@@ -135,6 +145,7 @@ def xpt_to_csv(filename=None, outfilename=None):
         'awaiting_member_descriptor': get_descriptor,
         'awaiting_member_data': get_member_data,
         'awaiting_second_header': get_second_header,
+        'awaiting_namestr_header': get_namestr_header,
     }
 
     while state != 'complete':
