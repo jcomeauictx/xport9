@@ -25,7 +25,7 @@ MEMBER_HEADER = (
 DESCRIPTOR_HEADER = (
     rb'^HEADER RECORD\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
 )
-
+REAL_MEMBER_HEADER = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
@@ -44,29 +44,29 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     convert xpt file to csv format
     '''
+    # pylint: disable=too-many-locals, too-many-statements  # can't be helped
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     csvdata = []
-    document = {}
+    document = {'members': []}
     state = 'awaiting_library_header'
     def get_library_header(record):
         pattern = re.compile(LIBRARY_HEADER)
-        if pattern.match(record):
-            logging.debug('found library header')
-        else:
+        if not pattern.match(record):
             raise ValueError('Invalid library header %r' % record)
+        logging.debug('found library header')
         return 'awaiting_real_header'
     def get_real_header(record):
         pattern = re.compile(REAL_HEADER)
         match = pattern.match(record)
-        if match:
-            document['sas_version'] = match.group(4).rstrip().decode()
-            document['os'] = match.group(5).rstrip(b'\0 ').decode()
-            document['ctime'] = decode_sas_datetime(match.group(6).decode())
-            logging.debug('document: %s', document)
-        else:
+        if not match:
             raise ValueError('Not finding valid header in %r' % record)
+        assert match.group(1).rstrip().decode() == 'SAS'
+        document['sas_version'] = match.group(4).rstrip().decode()
+        document['os'] = match.group(5).rstrip(b'\0 ').decode()
+        document['ctime'] = decode_sas_datetime(match.group(6).decode())
+        logging.debug('document: %s', document)
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
         document['mtime'] = decode_sas_datetime(record.rstrip().decode())
@@ -83,12 +83,34 @@ def xpt_to_csv(filename=None, outfilename=None):
         if not match:
             raise ValueError('%r is not valid descriptor header' % record)
         return 'awaiting_member_data'
+    def get_member_data(record):
+        pattern = re.compile(REAL_MEMBER_HEADER)
+        match = pattern.match(record)
+        if not match:
+            raise ValueError('%r is not valid real member header' % record)
+        assert match.group(1).rstrip().decode() == 'SAS'
+        document['members'].append({
+            'data_set_name': match.group(2).rstrip().decode()
+        })
+        member = document['members'][-1]
+        member['sas_version'] = match.group(4).rstrip().decode()
+        if member['sas_version'] != document['sas_version']:
+            logging.info('version %r does not match %r', member['sas_version'],
+                         document['sas_version'])
+        member['os'] = match.group(5).rstrip(b'\0 ').decode()
+        if member['os'] != document['os']:
+            logging.info('os %r does not match %r', member['os'],
+                         document['os'])
+        member['created'] = decode_sas_datetime(match.group(6).decode())
+        logging.debug('member: %s', member)
+        return 'awaiting_member_second_header'
     dispatch = {
         'awaiting_library_header': get_library_header,
         'awaiting_real_header': get_real_header,
         'awaiting_mtime_header': get_mtime_header,
         'awaiting_member_header': get_member_header,
         'awaiting_member_descriptor': get_descriptor,
+        'awaiting_member_data': get_member_data,
     }
 
     while state != 'complete':
