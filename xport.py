@@ -55,18 +55,21 @@ def xpt_to_csv(filename=None, outfilename=None):
         pattern = re.compile(REAL_HEADER)
         match = pattern.match(record)
         if match:
-            os_string = match.group(5).rstrip(b'\0 ')
-            document['os'] = os_string
-            ctime = match.group(6).decode()
-            logging.debug('ctime: %r', ctime)
-            document['ctime'] = datetime.strptime(ctime, '%d%b%y:%H:%M:%S')
+            document['sas_version'] = match.group(4).rstrip().decode()
+            document['os'] = match.group(5).rstrip(b'\0 ').decode()
+            document['ctime'] = decode_sas_datetime(match.group(6).decode())
             logging.debug('document: %s', document)
         else:
             raise ValueError('Not finding valid header in %r' % record)
         return 'awaiting_mtime_header'
+    def get_mtime_header(record):
+        document['mtime'] = decode_sas_datetime(record.rstrip().decode())
+        return 'awaiting_member_data'
+
     dispatch = {
         'awaiting_library_header': get_library_header,
         'awaiting_real_header': get_real_header,
+        'awaiting_mtime_header': get_mtime_header,
     }
 
     while state != 'complete':
@@ -79,6 +82,12 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('record: %r', record)
         state = dispatch[state](record)
     csvout.writerows(csvdata)
+
+def decode_sas_datetime(datestring):
+    '''
+    decode 16-byte datetime format and return as datetime object
+    '''
+    return datetime.strptime(datestring, '%d%b%y:%H:%M:%S')
 
 def ibm_to_double(bytestring, pack_output=False):
     '''
