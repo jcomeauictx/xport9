@@ -29,6 +29,7 @@ DESCRIPTOR_HEADER = (
 # "In the Version 6-styleformat, the member name was only 8 characters."
 REAL_MEMBER_HEADER_6 = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 REAL_MEMBER_HEADER_8 = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
+REAL_MEMBER_HEADER2 = rb'^(.{16}) {16}(.{40})(.{8})$'
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
@@ -70,12 +71,12 @@ def xpt_to_csv(filename=None, outfilename=None):
         document['sas_version'] = match.group(4).rstrip().decode()
         document['real_version'] = 8  # assume v8 or v9 for now
         document['os'] = match.group(5).rstrip(b'\0 ').decode()
-        document['ctime'] = decode_sas_datetime(match.group(6).decode())
+        document['created'] = decode_sas_datetime(match.group(6).decode())
         logging.debug('document: %s', document)
         assert document['sas_version'] and document['os']
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
-        document['mtime'] = decode_sas_datetime(record.rstrip().decode())
+        document['modified'] = decode_sas_datetime(record.rstrip().decode())
         return 'awaiting_member_header'
     def get_member_header(record):
         pattern = re.compile(MEMBER_HEADER)
@@ -89,7 +90,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         if not match:
             raise ValueError('%r is not valid descriptor header' % record)
         return 'awaiting_member_data'
-    def get_member_data(record):
+    def get_member_data(record, attempt=1):
+        if attempt > 2:
+            raise ValueError('%r not valid in old or new schema' % record)
         real_header = 'REAL_MEMBER_HEADER_%d' % document['real_version']
         logging.debug('assuming real member header is %s', real_header)
         pattern = re.compile(globals()[real_header])
@@ -110,8 +113,20 @@ def xpt_to_csv(filename=None, outfilename=None):
             document['real_version'] = (6, 8)[document['real_version'] == 6]
             logging.warning('trying again with version %d',
                             document['real_version'])
-            return get_member_data(record)
-        return 'awaiting_member_second_header'
+            return get_member_data(record, attempt + 1)
+        return 'awaiting_second_header'
+    def get_second_header(record):
+        pattern = re.compile(REAL_MEMBER_HEADER2)
+        match = pattern.match(record)
+        if not match:
+            raise ValueError('%r is not valid second header' % record)
+        member = document['members'][-1]
+        member['modified'] = decode_sas_datetime(match.group(1).decode())
+        member['dataset_label'] = match.group(2).rstrip().decode()
+        member['dataset_type'] = match.group(3).rstrip().decode()
+        logging.debug('member: %s', member)
+        return 'awaiting_namestring_header'
+
     dispatch = {
         'awaiting_library_header': get_library_header,
         'awaiting_real_header': get_real_header,
@@ -119,6 +134,7 @@ def xpt_to_csv(filename=None, outfilename=None):
         'awaiting_member_header': get_member_header,
         'awaiting_member_descriptor': get_descriptor,
         'awaiting_member_data': get_member_data,
+        'awaiting_second_header': get_second_header,
     }
 
     while state != 'complete':
