@@ -19,6 +19,9 @@ logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
 LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
 REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+MEMBER_HEADER = (
+    rb'^HEADER RECORD\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
+)
 
 TESTVECTORS = {
     # from PDF referenced above
@@ -64,12 +67,19 @@ def xpt_to_csv(filename=None, outfilename=None):
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
         document['mtime'] = decode_sas_datetime(record.rstrip().decode())
-        return 'awaiting_member_data'
+        return 'awaiting_member_header'
+    def get_member_header(record):
+        pattern = re.compile(MEMBER_HEADER)
+        match = pattern.match(record)
+        if not match:
+            raise ValueError('%r is not valid member header' % record)
+        return 'awaiting_member_descriptor'
 
     dispatch = {
         'awaiting_library_header': get_library_header,
         'awaiting_real_header': get_real_header,
         'awaiting_mtime_header': get_mtime_header,
+        'awaiting_member_header': get_member_header,
     }
 
     while state != 'complete':
