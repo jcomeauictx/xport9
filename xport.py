@@ -86,6 +86,18 @@ def xpt_to_csv(filename=None, outfilename=None):
 def decode_sas_datetime(datestring):
     '''
     decode 16-byte datetime format and return as datetime object
+
+    from the referenced PDF: "Note thatonly a 2-digit year appears.
+    If any programneedsto readin this 2-digit year, be prepared to deal
+    with dates in the 1900s or the 2000s."
+
+    I'm letting the datetime module handle this. It seems to be crossing into
+    the past on January 1, 1969.
+
+    >>> decode_sas_datetime('31DEC68:23:59:59')
+    datetime.datetime(2068, 12, 31, 23, 59, 59)
+    >>> decode_sas_datetime('01JAN69:00:00:00')
+    datetime.datetime(1969, 1, 1, 0, 0)
     '''
     return datetime.strptime(datestring, '%d%b%y:%H:%M:%S')
 
