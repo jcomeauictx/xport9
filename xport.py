@@ -33,6 +33,9 @@ REAL_MEMBER_HEADER2 = rb'^(.{16}) {16}(.{40})(.{8})$'
 NAMESTR_HEADER = (
     rb'^HEADER RECORD\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
 )
+OBSERVATION_HEADER = (
+    rb'HEADER RECORD\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
+)
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
@@ -104,7 +107,11 @@ def xpt_to_csv(filename=None, outfilename=None):
             raise ValueError('%r is not valid real member header' % record)
         assert match.group(1).rstrip().decode() == 'SAS'
         document['members'].append({
-            'dataset_name': match.group(2).rstrip().decode()
+            'dataset_name': match.group(2).rstrip().decode(),
+            'namestrings': b'',
+            'names': [],
+            'observations': b'',
+            'data': [],
         })
         member = document['members'][-1]
         member['sas_version'] = match.group(4).rstrip().decode()
@@ -136,6 +143,14 @@ def xpt_to_csv(filename=None, outfilename=None):
             raise ValueError('%r is not valid namestr header' % record)
         logging.debug('unknown value in namestr header: %s', match.group(1))
         return 'awaiting_namestr_records'
+    def get_namestr_records(record):
+        pattern = re.compile(OBSERVATION_HEADER)
+        match = pattern.match(record)
+        if not match:
+            member = document['members'][-1]
+            member['namestrings'] += record
+            return 'awaiting_namestr_records'
+        return 'awaiting_observation_records'
 
     dispatch = {
         'awaiting_library_header': get_library_header,
@@ -146,6 +161,7 @@ def xpt_to_csv(filename=None, outfilename=None):
         'awaiting_member_data': get_member_data,
         'awaiting_second_header': get_second_header,
         'awaiting_namestr_header': get_namestr_header,
+        'awaiting_namestr_records': get_namestr_records,
     }
 
     while state != 'complete':
