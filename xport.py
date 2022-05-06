@@ -101,7 +101,7 @@ def xpt_to_csv(filename=None, outfilename=None):
             raise ValueError('%r is not valid real member header' % record)
         assert match.group(1).rstrip().decode() == 'SAS'
         document['members'].append({
-            'data_set_name': match.group(2).rstrip().decode()
+            'dataset_name': match.group(2).rstrip().decode()
         })
         member = document['members'][-1]
         member['sas_version'] = match.group(4).rstrip().decode()
