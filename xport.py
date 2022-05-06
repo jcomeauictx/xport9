@@ -63,10 +63,12 @@ def xpt_to_csv(filename=None, outfilename=None):
         if not match:
             raise ValueError('Not finding valid header in %r' % record)
         assert match.group(1).rstrip().decode() == 'SAS'
+        assert match.group(2).rstrip().decode() == 'SAS'
         document['sas_version'] = match.group(4).rstrip().decode()
         document['os'] = match.group(5).rstrip(b'\0 ').decode()
         document['ctime'] = decode_sas_datetime(match.group(6).decode())
         logging.debug('document: %s', document)
+        assert document['sas_version'] and document['os']
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
         document['mtime'] = decode_sas_datetime(record.rstrip().decode())
@@ -94,15 +96,15 @@ def xpt_to_csv(filename=None, outfilename=None):
         })
         member = document['members'][-1]
         member['sas_version'] = match.group(4).rstrip().decode()
+        member['os'] = match.group(5).rstrip(b'\0 ').decode()
+        member['created'] = decode_sas_datetime(match.group(6).decode())
+        logging.debug('member: %s', member)
         if member['sas_version'] != document['sas_version']:
             logging.info('version %r does not match %r', member['sas_version'],
                          document['sas_version'])
-        member['os'] = match.group(5).rstrip(b'\0 ').decode()
         if member['os'] != document['os']:
             logging.info('os %r does not match %r', member['os'],
                          document['os'])
-        member['created'] = decode_sas_datetime(match.group(6).decode())
-        logging.debug('member: %s', member)
         return 'awaiting_member_second_header'
     dispatch = {
         'awaiting_library_header': get_library_header,
