@@ -225,13 +225,11 @@ def unpack_name(groupdict):
     unpack all the values from the regex match of a NAMESTR record
     '''
     for key, value in list(groupdict.items()):
-        if key in ('nfill', 'rest'):
-            groupdict[key] = '(ignored)'
-        elif len(value) in [2, 4]:
+        if key in ['nfill', 'rest'] or len(value) not in [2, 4]:
+            groupdict[key] = value.rstrip(b'\0 ').decode()
+        else:
             packformat = '>h' if len(value) == 2 else '>l'
             groupdict[key] = struct.unpack(packformat, value)[0]
-        else:
-            groupdict[key] = value.rstrip(b'\0 ').decode()
     logging.debug('groupdict: %s', groupdict)
 
 def decode_sas_datetime(datestring):
