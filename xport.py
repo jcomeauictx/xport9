@@ -2,7 +2,11 @@
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 
-written so as to support older formats as well, but not tested for those.
+written so as to support older formats as well, but not well tested for those.
+
+*PRIMARILY* to support decoding of possibly obfuscated .xpt files from
+Pfizer/FDA. look at decode_time() to see what I'm talking about. so, this
+may not work with "normal" SAS files.
 
 https://support.sas.com/content/dam/SAS/support/en/technical-papers/
 record-layout-of-a-sas-version-8-or-9-data-set-in-sas-transport-format.pdf
@@ -326,7 +330,7 @@ def decode_time(rawdatum):
         modified = b'\0' + rawdatum[1:4]
         offset = struct.unpack('>L', modified)[0] >> 4
         time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
-    elif rawdatum == b'.\0\0\0\0\0\0\0':
+    elif rawdatum in [b'.\0\0\0\0\0\0\0', b'\0\0\0\0\0\0\0\0']:
         time = None
     else:
         raise ValueError('Unknown TIME representation %r' % rawdatum)
