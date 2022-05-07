@@ -36,6 +36,29 @@ NAMESTR_HEADER = (
 OBSERVATION_HEADER = (
     rb'HEADER RECORD\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
 )
+NAMESTR = (
+    # all 2-byte fields below are shorts except for nfill
+    # the only other number is npos, which is a long
+    # all the rest are character data or fill
+    rb'^(?P<ntype>.{2})'  # variable name, 1=numeric, 2=char
+    rb'(?P<nhfun>.{2})'   # hash of name (always 0)
+    rb'(?P<nlng>.{2})'    # length of variable in observation
+    rb'(?P<nvar0>.{2})'   # varnum (variable number)
+    rb'(?P<nname>.{8})'   # name of variable
+    rb'(?P<nlabel>.{40})' # label of variable
+    rb'(?P<nform>.{8})'   # name of format
+    rb'(?P<nfl>.{2})'     # format field length
+    rb'(?P<nfd>.{2})'     # format number of decimals
+    rb'(?P<nfj>.{2})'     # justification, 0=left, 1=right
+    rb'(?P<nfill>.{2})'   # unused, for alignment and future
+    rb'(?P<niform>.{8})'  # name of input format
+    rb'(?P<nifl>.{2})'    # informat length attribute
+    rb'(?P<nifd>.{2})'    # informat number of decimals
+    rb'(?P<npos>.{4})'    # position of value in observation
+    rb'(?P<longname>.{32})'  # long name for version 8 style labels
+    rb'(?P<lablen>.{2})'  # length of label
+    rb'(?P<rest>.{18})'   # "remaining fields are irrelevant"
+)
 TESTVECTORS = {
     # from PDF referenced above
     'xpt': {
