@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -OO
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 
@@ -318,6 +318,9 @@ def ibm_to_double(bytestring, pack_output=False):
     exponent = (remainder >> 56) - 64
     mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 52)
     logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
+    # found by experience that this fatal combination is common, assuming NaN
+    if (sign, mantissa, exponent) == (1, 0.0, -18):
+        return math.nan
     try:
         double = sign * mantissa ** exponent
         logging.debug('double: %f', double)
