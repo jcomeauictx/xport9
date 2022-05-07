@@ -12,6 +12,16 @@ note on encoding:
      that is compatible with the encoding used to create the file.
      There is no method of conveying encoding information other than
      documenting it with the delivery of the transport file."
+
+note on missing values:
+    The documentation linked above gives a cryptic chart for missing values
+    on page 7. It is explained better at https://support.sas.com/
+    documentation/cdl/en/lrcon/62955/HTML/default/a002316433.htm:
+    A missing numeric value is a single dot (char(0x2e)) followed by 7 nulls:
+    ".\0\0\0\0\0\0\0"
+    A missing character value is a single space followed by nulls: " \0\0..."
+    A missing special format value is a dot followed by the letter A-Z
+    representing the special value, followed by nulls, e.g. ".B\0\0\0..."
 '''
 import sys, re, csv, struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime
@@ -290,7 +300,7 @@ def decode_sas_datetime(datestring):
     return datetime.strptime(datestring, '%d%b%y:%H:%M:%S')
 
 def ibm_to_double(bytestring, pack_output=False):
-    '''
+    r'''
     convert 64-bit IBM float bytestring to IEEE floating point
 
     IBM:  seeeeeeemmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
@@ -318,7 +328,10 @@ def ibm_to_double(bytestring, pack_output=False):
     [-1.0, 0.0, 1.0, 2.0]
     >>> {key: ibm_to_double(ibm[key], True) for key in ibm} == ieee
     True
+    >>> ibm_to_double(b'.\0\0\0\0\0\0\0')
     '''
+    if bytestring == b'.\0\0\0\0\0\0\0':  # missing numeric value
+        return None
     integer = struct.unpack('>Q', bytestring)[0]
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
     if integer == 0:
@@ -329,9 +342,6 @@ def ibm_to_double(bytestring, pack_output=False):
     exponent = (remainder >> 56) - 64
     mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 52)
     logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
-    # found by experience that this fatal combination is common, assuming NaN
-    if (sign, mantissa, exponent) == (1, 0.0, -18):
-        return math.nan
     try:
         double = sign * mantissa ** exponent
         logging.debug('double: %f', double)
