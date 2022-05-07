@@ -28,6 +28,7 @@ import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
+SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
 LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
 REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 MEMBER_HEADER = (
@@ -289,7 +290,7 @@ def decode_date(rawdatum):
     '''
     if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
         offset = struct.unpack('>H', rawdatum[1:3])[0]
-        date = str((datetime(1960, 1, 1) + timedelta(days=offset)).date())
+        date = str((SAS_EPOCH + timedelta(days=offset)).date())
     elif rawdatum == b'.\0\0\0\0\0\0\0':
         date = None
     else:
@@ -304,21 +305,27 @@ def decode_time(rawdatum):
     since midnight
 
     example is 0x44c8dc0000000000. but an offset of 0xffff is only 6:12:15 PM,
-    so the first byte must be used above 0x44.
+    so there are other formats in use.
 
     >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
     '14:17:00'
     >>> decode_time(b'\x45\x10\x15\x80\0\0\0\0')
     '18:18:00'
+    >>> decode_time(b'\x43\x3f\xc0\0\0\0\0\0')
+    '00:17:00'
     '''
-    if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
+    if rawdatum[0] == 0x43 and rawdatum[3:] == b'\0\0\0\0\0':
+        modified = rawdatum[1:3]
+        offset = struct.unpack('>H', modified)[0] / 16
+        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
+    elif rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
         modified = rawdatum[1:3]
         offset = struct.unpack('>H', modified)[0]
-        time = str((datetime(1960, 1, 1) + timedelta(seconds=offset)).time())
+        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
     elif rawdatum[0] == 0x45 and rawdatum[4:] == b'\0\0\0\0':
         modified = b'\0' + rawdatum[1:4]
         offset = struct.unpack('>L', modified)[0] >> 4
-        time = str((datetime(1960, 1, 1) + timedelta(seconds=offset)).time())
+        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
     elif rawdatum == b'.\0\0\0\0\0\0\0':
         time = None
     else:
@@ -342,7 +349,7 @@ def decode_datetime(rawdatum):
     '''
     if rawdatum[0] == 0x48 and rawdatum[5:] == b'\0\0\0':
         offset = struct.unpack('>L', rawdatum[1:5])[0]
-        date_time = str(datetime(1960, 1, 1) + timedelta(seconds=offset))
+        date_time = str(SAS_EPOCH + timedelta(seconds=offset))
     elif rawdatum == b'.\0\0\0\0\0\0\0':
         date_time = None
     else:
