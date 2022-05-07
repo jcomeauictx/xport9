@@ -185,7 +185,7 @@ def xpt_to_csv(filename=None, outfilename=None):
                 if not match:
                     raise ValueError('pattern %s does not match %r' % (
                         pattern, namestring))
-                member['names'].append(match.groupdict)
+                member['names'].append(match.groupdict())
         return 'awaiting_observation_records'
     def get_observation_records(record):
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
