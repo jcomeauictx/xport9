@@ -253,12 +253,23 @@ def unpack_record(rawdata, fields):
     return data
 
 def decode_string(string):
-    '''
+    r'''
     clean and decode string (character) data
 
     may need to try different encodings, but for now assume utf8
+
+    >>> decode_string(b'\0\0\0\0\0    ')
+    ''
+    >>> decode_string(b'ABC 3(*ESC*){unicode 03BC}g')
+    'ABC 3μg'
     '''
-    return string.rstrip(b'\0 ').decode()
+    decoded = string.rstrip(b'\0 ').decode()
+    cleaned = re.sub(
+        re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
+        lambda match: chr(int(match.group(1), 16)),
+        decoded
+    )
+    return cleaned
 
 def decode_sas_datetime(datestring):
     '''
