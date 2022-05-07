@@ -57,7 +57,7 @@ NAMESTR = (
     rb'(?P<npos>.{4})'    # position of value in observation
     rb'(?P<longname>.{32})'  # long name for version 8 style labels
     rb'(?P<lablen>.{2})'  # length of label
-    rb'(?P<rest>.{18})'   # "remaining fields are irrelevant"
+    rb'(?P<rest>.{18})$'   # "remaining fields are irrelevant"
 )
 TESTVECTORS = {
     # from PDF referenced above
@@ -85,13 +85,13 @@ def xpt_to_csv(filename=None, outfilename=None):
     document = {'members': []}
     state = 'awaiting_library_header'
     def get_library_header(record):
-        pattern = re.compile(LIBRARY_HEADER)
+        pattern = re.compile(LIBRARY_HEADER, re.DOTALL)
         if not pattern.match(record):
             raise ValueError('Invalid library header %r' % record)
         logging.debug('found library header')
         return 'awaiting_real_header'
     def get_real_header(record):
-        pattern = re.compile(REAL_HEADER)
+        pattern = re.compile(REAL_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('Not finding valid header in %r' % record)
@@ -108,13 +108,13 @@ def xpt_to_csv(filename=None, outfilename=None):
         document['modified'] = decode_sas_datetime(record.rstrip().decode())
         return 'awaiting_member_header'
     def get_member_header(record):
-        pattern = re.compile(MEMBER_HEADER)
+        pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid member header' % record)
         return 'awaiting_member_descriptor'
     def get_descriptor(record):
-        pattern = re.compile(DESCRIPTOR_HEADER)
+        pattern = re.compile(DESCRIPTOR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid descriptor header' % record)
@@ -124,7 +124,7 @@ def xpt_to_csv(filename=None, outfilename=None):
             raise ValueError('%r not valid in old or new schema' % record)
         real_header = 'REAL_MEMBER_HEADER_%d' % document['real_version']
         logging.debug('assuming real member header is %s', real_header)
-        pattern = re.compile(globals()[real_header])
+        pattern = re.compile(globals()[real_header], re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid real member header' % record)
@@ -149,7 +149,7 @@ def xpt_to_csv(filename=None, outfilename=None):
             return get_member_data(record, attempt + 1)
         return 'awaiting_second_header'
     def get_second_header(record):
-        pattern = re.compile(REAL_MEMBER_HEADER2)
+        pattern = re.compile(REAL_MEMBER_HEADER2, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid second header' % record)
@@ -160,22 +160,35 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('member: %s', member)
         return 'awaiting_namestr_header'
     def get_namestr_header(record):
-        pattern = re.compile(NAMESTR_HEADER)
+        pattern = re.compile(NAMESTR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid namestr header' % record)
         logging.debug('unknown value in namestr header: %s', match.group(1))
         return 'awaiting_namestr_records'
     def get_namestr_records(record):
-        pattern = re.compile(OBSERVATION_HEADER)
+        pattern = re.compile(OBSERVATION_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             member = document['members'][-1]
             member['namestrings'] += record
             return 'awaiting_namestr_records'
+        # now process each namestring
+        pattern = re.compile(NAMESTR, re.DOTALL)
+        member = document['members'][-1]
+        for index in range(0, len(member['namestrings']), 140):
+            namestring = member['namestrings'][index:index + 140]
+            if len(namestring) < 140:
+                logging.debug('discarding padding %r', namestring)
+            else:
+                match = pattern.match(namestring)
+                if not match:
+                    raise ValueError('pattern %s does not match %r' % (
+                        pattern, namestring))
+                member['names'].append(match.groupdict)
         return 'awaiting_observation_records'
     def get_observation_records(record):
-        pattern = re.compile(MEMBER_HEADER)
+        pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             member = document['members'][-1]
