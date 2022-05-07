@@ -289,7 +289,7 @@ def decode_date(rawdatum):
     except TypeError:
         date = None
     if os.getenv('DEBUG_DATETIMES') and date is not None:
-        date += (' (%s)' % rawdatum.hex())
+        date += (' (DATE %s)' % rawdatum.hex())
     return date
 
 def decode_time(rawdatum):
@@ -306,7 +306,7 @@ def decode_time(rawdatum):
     except TypeError:
         time = None
     if os.getenv('DEBUG_DATETIMES') and time is not None:
-        time += (' (%s)' % rawdatum.hex())
+        time += (' (TIME %s)' % rawdatum.hex())
     return time
 
 def decode_datetime(rawdatum):
@@ -323,7 +323,7 @@ def decode_datetime(rawdatum):
     except TypeError:
         date_time = None
     if os.getenv('DEBUG_DATETIMES') and date_time is not None:
-        date_time += ' (%s)' % rawdatum.hex()
+        date_time += ' (DATETIME %s)' % rawdatum.hex()
     return date_time
 
 def decode_string(string):
