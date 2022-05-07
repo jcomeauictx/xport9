@@ -23,7 +23,8 @@ note on missing values:
     A missing special format value is a dot followed by the letter A-Z
     representing the special value, followed by nulls, e.g. ".B\0\0\0..."
 '''
-import sys, re, csv, struct, math, logging  # pylint: disable=multiple-imports
+import sys, os, re, csv  # pylint: disable=multiple-imports
+import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
@@ -167,6 +168,12 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['dataset_label'] = match.group(2).rstrip().decode()
         member['dataset_type'] = match.group(3).rstrip().decode()
         logging.debug('member: %s', member)
+        # write out a header for the dataset
+        csvout.writerow([
+            '%s (%s)' % (member['dataset_name'], member['dataset_label']),
+            'created %s' % member['created'],
+            'modified %s' % member['modified'],
+        ])
         return 'awaiting_namestr_header'
     def get_namestr_header(record):
         pattern = re.compile(NAMESTR_HEADER, re.DOTALL)
@@ -195,6 +202,8 @@ def xpt_to_csv(filename=None, outfilename=None):
                     raise ValueError('pattern %s does not match %r' % (
                         pattern, namestring))
                 member['names'].append(unpack_name(match.groupdict()))
+        # write out column headers, short and long form
+        csvout.writerow([name['nname'] for name in member['names']])
         csvout.writerow([name['nlabel'] for name in member['names']])
         last = member['names'][-1]
         member['recordlength'] = last['npos'] + last['nlng']
@@ -276,9 +285,12 @@ def decode_date(rawdatum):
     '''
     number = ibm_to_double(rawdatum)
     try:
-        return str((datetime(1960, 1, 1) + timedelta(days=number)).date())
+        date = str((datetime(1960, 1, 1) + timedelta(days=number)).date())
     except TypeError:
-        return None
+        date = None
+    if os.getenv('DEBUG_DATETIMES') and date is not None:
+        date += (' (%s)' % rawdatum.hex())
+    return date
 
 def decode_time(rawdatum):
     r'''
@@ -290,9 +302,12 @@ def decode_time(rawdatum):
     '''
     number = ibm_to_double(rawdatum)
     try:
-        return str(timedelta(seconds=number))
+        time = str(timedelta(seconds=number))
     except TypeError:
-        return None
+        time = None
+    if os.getenv('DEBUG_DATETIMES') and time is not None:
+        time += (' (%s)' % rawdatum.hex())
+    return time
 
 def decode_datetime(rawdatum):
     r'''
@@ -304,9 +319,12 @@ def decode_datetime(rawdatum):
     '''
     number = ibm_to_double(rawdatum)
     try:
-        return str(datetime(1960, 1, 1) + timedelta(seconds=number))
+        date_time = str(datetime(1960, 1, 1) + timedelta(seconds=number))
     except TypeError:
-        return None
+        date_time = None
+    if os.getenv('DEBUG_DATETIMES') and date_time is not None:
+        date_time += ' (%s)' % rawdatum.hex()
+    return date_time
 
 def decode_string(string):
     r'''
