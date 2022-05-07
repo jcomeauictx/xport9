@@ -151,6 +151,14 @@ def xpt_to_csv(filename=None, outfilename=None):
             member['namestrings'] += record
             return 'awaiting_namestr_records'
         return 'awaiting_observation_records'
+    def get_observation_records(record):
+        pattern = re.compile(MEMBER_HEADER)
+        match = pattern.match(record)
+        if not match:
+            member = document['members'][-1]
+            member['observations'] += record
+            return 'awaiting_observation_records'
+        return get_member_header(record)
 
     dispatch = {
         'awaiting_library_header': get_library_header,
@@ -162,6 +170,7 @@ def xpt_to_csv(filename=None, outfilename=None):
         'awaiting_second_header': get_second_header,
         'awaiting_namestr_header': get_namestr_header,
         'awaiting_namestr_records': get_namestr_records,
+        'awaiting_observation_records': get_observation_records,
     }
 
     while state != 'complete':
