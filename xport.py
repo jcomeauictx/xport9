@@ -269,36 +269,44 @@ def unpack_record(rawdata, fields):
 
 def decode_date(rawdatum):
     r'''
-    SAS date values are stored internally as an integer represending
-    the number of days from 1960-01-01
+    SAS date values are stored internally as the number of days from 1960-01-01
 
     >>> decode_date(b'\0\0\0\0\0\0\0\0')
     '1960-01-01'
     '''
-    integer = struct.unpack('>Q', rawdatum)[0]
-    return str((datetime(1960, 1, 1) + timedelta(days=integer)).date())
+    number = ibm_to_double(rawdatum)
+    try:
+        return str((datetime(1960, 1, 1) + timedelta(days=number)).date())
+    except TypeError:
+        return None
 
 def decode_time(rawdatum):
     r'''
-    SAS time values are stored internally as an integer representing
-    the number of seconds since midnight
+    SAS time values are stored internally as the number of seconds
+    since midnight
 
     >>> decode_time(b'\0\0\0\0\0\0\0\0')
     '0:00:00'
     '''
-    integer = struct.unpack('>Q', rawdatum)[0]
-    return str(timedelta(seconds=integer))
+    number = ibm_to_double(rawdatum)
+    try:
+        return str(timedelta(seconds=number))
+    except TypeError:
+        return None
 
 def decode_datetime(rawdatum):
     r'''
-    SAS datetime values are stored internally as an integer representing
-    the number of seconds since midnight 1960-01-01
+    SAS datetime values are stored internally as the number of seconds
+    since midnight 1960-01-01
 
     >>> decode_datetime(b'\0\0\0\0\0\0\0\0')
     '1960-01-01 00:00:00'
     '''
-    integer = struct.unpack('>Q', rawdatum)[0]
-    return str(datetime(1960, 1, 1) + timedelta(seconds=integer))
+    number = ibm_to_double(rawdatum)
+    try:
+        return str(datetime(1960, 1, 1) + timedelta(seconds=number))
+    except TypeError:
+        return None
 
 def decode_string(string):
     r'''
