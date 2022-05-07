@@ -304,13 +304,20 @@ def decode_time(rawdatum):
     since midnight
 
     example is 0x44c8dc0000000000. but an offset of 0xffff is only 6:12:15 PM,
-    so the first byte must mean something in this context.
+    so the first byte must be used above 0x44.
 
     >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
     '14:17:00'
+    >>> decode_time(b'\x45\x10\x15\x80\0\0\0\0')
+    '18:18:00'
     '''
     if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
-        offset = struct.unpack('>H', rawdatum[1:3])[0]
+        modified = rawdatum[1:3]
+        offset = struct.unpack('>H', modified)[0]
+        time = str((datetime(1960, 1, 1) + timedelta(seconds=offset)).time())
+    elif rawdatum[0] == 0x45 and rawdatum[4:] == b'\0\0\0\0':
+        modified = b'\0' + rawdatum[1:4]
+        offset = struct.unpack('>L', modified)[0] >> 4
         time = str((datetime(1960, 1, 1) + timedelta(seconds=offset)).time())
     elif rawdatum == b'.\0\0\0\0\0\0\0':
         time = None
