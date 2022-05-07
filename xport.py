@@ -197,7 +197,8 @@ def xpt_to_csv(filename=None, outfilename=None):
         if not match:
             member['observations'] += record
             if len(member['observations']) > recordlength:
-                data = unpack_record(member['observations'][:recordlength])
+                record = member['observations'][:recordlength]
+                data = unpack_record(record, member['names'])
                 member['observations'] = member['observations'][recordlength:]
                 csvout.writerow(data)
             return 'awaiting_observation_records'
@@ -239,12 +240,25 @@ def unpack_name(groupdict):
     logging.debug('groupdict: %s', groupdict)
     return groupdict
 
-def unpack_record(rawdata):
+def unpack_record(rawdata, fields):
     '''
     unpack observation using namestr info as guide
     '''
-    logging.debug('rawdata: %r', rawdata)
-    return ['this', 'is', 'a', 'test']
+    data = []
+    for field in fields:
+        rawdatum = rawdata[field['npos']:field['npos'] + field['nlng']]
+        data.append(
+            (ibm_to_double, decode_string)[field['ntype'] - 1](rawdatum)
+        )
+    return data
+
+def decode_string(string):
+    '''
+    clean and decode string (character) data
+
+    may need to try different encodings, but for now assume utf8
+    '''
+    return string.rstrip(b'\0 ').decode()
 
 def decode_sas_datetime(datestring):
     '''
