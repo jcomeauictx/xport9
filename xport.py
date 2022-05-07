@@ -13,7 +13,7 @@ note on encoding:
      There is no method of conveying encoding information other than
      documenting it with the delivery of the transport file."
 '''
-import sys, re, csv, struct, logging  # pylint: disable=multiple-imports
+import sys, re, csv, struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
@@ -318,9 +318,14 @@ def ibm_to_double(bytestring, pack_output=False):
     exponent = (remainder >> 56) - 64
     mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 52)
     logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
-    double = sign * mantissa ** exponent
-    logging.debug('double: %f', double)
-    return struct.pack('d', double) if pack_output else double
+    try:
+        double = sign * mantissa ** exponent
+        logging.debug('double: %f', double)
+        return struct.pack('d', double) if pack_output else double
+    except ZeroDivisionError:
+        logging.error('cannot convert sign %d, mantissa %f, and exponent %d'
+                      ' to float', sign, mantissa, exponent)
+        return math.nan
 
 if __name__ == '__main__':
     xpt_to_csv(*sys.argv[1:])
