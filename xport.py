@@ -24,7 +24,7 @@ note on missing values:
     representing the special value, followed by nulls, e.g. ".B\0\0\0..."
 '''
 import sys, re, csv, struct, math, logging  # pylint: disable=multiple-imports
-from datetime import datetime
+from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
 LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
@@ -253,14 +253,52 @@ def unpack_name(groupdict):
 def unpack_record(rawdata, fields):
     '''
     unpack observation using namestr info as guide
+
+    date and time formats explained at https://libguides.library.kent.edu/
+    SAS/DatesTime
     '''
     data = []
     for field in fields:
         rawdatum = rawdata[field['npos']:field['npos'] + field['nlng']]
+        decode_number = (ibm_to_double if not field['nform'] else
+                         globals()['decode_%s' % field['nform'].lower()])
         data.append(
-            (ibm_to_double, decode_string)[field['ntype'] - 1](rawdatum)
+            (decode_number, decode_string)[field['ntype'] - 1](rawdatum)
         )
     return data
+
+def decode_date(rawdatum):
+    r'''
+    SAS date values are stored internally as an integer represending
+    the number of days from 1960-01-01
+
+    >>> decode_date(b'\0\0\0\0\0\0\0\0')
+    '1960-01-01'
+    '''
+    integer = struct.unpack('>Q', rawdatum)[0]
+    return str((datetime(1960, 1, 1) + timedelta(days=integer)).date())
+
+def decode_time(rawdatum):
+    r'''
+    SAS time values are stored internally as an integer representing
+    the number of seconds since midnight
+
+    >>> decode_time(b'\0\0\0\0\0\0\0\0')
+    '0:00:00'
+    '''
+    integer = struct.unpack('>Q', rawdatum)[0]
+    return str(timedelta(seconds=integer))
+
+def decode_datetime(rawdatum):
+    r'''
+    SAS datetime values are stored internally as an integer representing
+    the number of seconds since midnight 1960-01-01
+
+    >>> decode_datetime(b'\0\0\0\0\0\0\0\0')
+    '1960-01-01 00:00:00'
+    '''
+    integer = struct.unpack('>Q', rawdatum)[0]
+    return str(datetime(1960, 1, 1) + timedelta(seconds=integer))
 
 def decode_string(string):
     r'''
