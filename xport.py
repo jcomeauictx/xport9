@@ -280,14 +280,20 @@ def decode_date(rawdatum):
     r'''
     SAS date values are stored internally as the number of days from 1960-01-01
 
-    >>> decode_date(b'\0\0\0\0\0\0\0\0')
-    '1960-01-01'
+    but what was found experimentally is that, of for example
+    0x4456170000000000, 0x5617 is the number of days; the meaning of 0x44 in
+    the first byte is as yet undetermined.
+
+    >>> decode_date(b'\x44\x56\x17\0\0\0\0\0')
+    '2020-05-04'
     '''
-    number = ibm_to_double(rawdatum)
-    try:
-        date = str((datetime(1960, 1, 1) + timedelta(days=number)).date())
-    except TypeError:
+    if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
+        offset = struct.unpack('>H', rawdatum[1:3])[0]
+        date = str((datetime(1960, 1, 1) + timedelta(days=offset)).date())
+    elif rawdatum == b'.\0\0\0\0\0\0\0':
         date = None
+    else:
+        raise ValueError('Unknown DATE representation %r' % rawdatum)
     if os.getenv('DEBUG_DATETIMES') and date is not None:
         date += (' (DATE %s)' % rawdatum.hex())
     return date
@@ -297,14 +303,19 @@ def decode_time(rawdatum):
     SAS time values are stored internally as the number of seconds
     since midnight
 
-    >>> decode_time(b'\0\0\0\0\0\0\0\0')
-    '0:00:00'
+    example is 0x44c8dc0000000000. but an offset of 0xffff is only 6:12:15 PM,
+    so the first byte must mean something in this context.
+
+    >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
+    '14:17:00'
     '''
-    number = ibm_to_double(rawdatum)
-    try:
-        time = str(timedelta(seconds=number))
-    except TypeError:
+    if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
+        offset = struct.unpack('>H', rawdatum[1:3])[0]
+        time = str((datetime(1960, 1, 1) + timedelta(seconds=offset)).time())
+    elif rawdatum == b'.\0\0\0\0\0\0\0':
         time = None
+    else:
+        raise ValueError('Unknown TIME representation %r' % rawdatum)
     if os.getenv('DEBUG_DATETIMES') and time is not None:
         time += (' (TIME %s)' % rawdatum.hex())
     return time
@@ -314,14 +325,21 @@ def decode_datetime(rawdatum):
     SAS datetime values are stored internally as the number of seconds
     since midnight 1960-01-01
 
-    >>> decode_datetime(b'\0\0\0\0\0\0\0\0')
-    '1960-01-01 00:00:00'
+    example: 0x4871801b5c000000, the 0x71791b5c is the seconds offset
+
+    it yields 2020-05-04:14:17:00, which verifies the decode_time logic above,
+    since both numbers were from the same document.
+
+    >>> decode_datetime(b'\x48\x71\x80\x1b\x5c\0\0\0')
+    '2020-05-04 14:17:00'
     '''
-    number = ibm_to_double(rawdatum)
-    try:
-        date_time = str(datetime(1960, 1, 1) + timedelta(seconds=number))
-    except TypeError:
+    if rawdatum[0] == 0x48 and rawdatum[5:] == b'\0\0\0':
+        offset = struct.unpack('>L', rawdatum[1:5])[0]
+        date_time = str(datetime(1960, 1, 1) + timedelta(seconds=offset))
+    elif rawdatum == b'.\0\0\0\0\0\0\0':
         date_time = None
+    else:
+        raise ValueError('Unknown DATETIME representation %r' % rawdatum)
     if os.getenv('DEBUG_DATETIMES') and date_time is not None:
         date_time += ' (DATETIME %s)' % rawdatum.hex()
     return date_time
