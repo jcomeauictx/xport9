@@ -81,7 +81,6 @@ def xpt_to_csv(filename=None, outfilename=None):
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
-    csvdata = []
     document = {'members': []}
     state = 'awaiting_library_header'
     def get_library_header(record):
@@ -186,13 +185,21 @@ def xpt_to_csv(filename=None, outfilename=None):
                     raise ValueError('pattern %s does not match %r' % (
                         pattern, namestring))
                 member['names'].append(unpack_name(match.groupdict()))
+        csvout.writerow([name['nlabel'] for name in member['names']])
+        last = member['names'][-1]
+        member['recordlength'] = last['npos'] + last['nlng']
         return 'awaiting_observation_records'
     def get_observation_records(record):
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
+        member = document['members'][-1]
+        recordlength = member['recordlength']
         if not match:
-            member = document['members'][-1]
             member['observations'] += record
+            if len(member['observations']) > recordlength:
+                data = unpack_record(member['observations'][:recordlength])
+                member['observations'] = member['observations'][recordlength:]
+                csvout.writerow(data)
             return 'awaiting_observation_records'
         return get_member_header(record)
 
@@ -218,7 +225,6 @@ def xpt_to_csv(filename=None, outfilename=None):
             continue
         logging.debug('record: %r', record)
         state = dispatch[state](record)
-    csvout.writerows(csvdata)
 
 def unpack_name(groupdict):
     '''
@@ -231,6 +237,14 @@ def unpack_name(groupdict):
             packformat = '>h' if len(value) == 2 else '>l'
             groupdict[key] = struct.unpack(packformat, value)[0]
     logging.debug('groupdict: %s', groupdict)
+    return groupdict
+
+def unpack_record(rawdata):
+    '''
+    unpack observation using namestr info as guide
+    '''
+    logging.debug('rawdata: %r', rawdata)
+    return ['this', 'is', 'a', 'test']
 
 def decode_sas_datetime(datestring):
     '''
