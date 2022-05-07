@@ -40,7 +40,7 @@ NAMESTR = (
     # all 2-byte fields below are shorts except for nfill
     # the only other number is npos, which is a long
     # all the rest are character data or fill
-    rb'^(?P<ntype>.{2})'  # variable name, 1=numeric, 2=char
+    rb'^(?P<ntype>.{2})'  # variable type, 1=numeric, 2=char
     rb'(?P<nhfun>.{2})'   # hash of name (always 0)
     rb'(?P<nlng>.{2})'    # length of variable in observation
     rb'(?P<nvar0>.{2})'   # varnum (variable number)
@@ -185,7 +185,7 @@ def xpt_to_csv(filename=None, outfilename=None):
                 if not match:
                     raise ValueError('pattern %s does not match %r' % (
                         pattern, namestring))
-                member['names'].append(match.groupdict())
+                member['names'].append(unpack_name(match.groupdict()))
         return 'awaiting_observation_records'
     def get_observation_records(record):
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
@@ -219,6 +219,20 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('record: %r', record)
         state = dispatch[state](record)
     csvout.writerows(csvdata)
+
+def unpack_name(groupdict):
+    '''
+    unpack all the values from the regex match of a NAMESTR record
+    '''
+    for key, value in list(groupdict.items()):
+        if key in ('nfill', 'rest'):
+            groupdict[key] = '(ignored)'
+        elif len(value) in [2, 4]:
+            packformat = '>h' if len(value) == 2 else '>l'
+            groupdict[key] = struct.unpack(packformat, value)[0]
+        else:
+            groupdict[key] = value.rstrip(b'\0 ').decode()
+    logging.debug('groupdict: %s', groupdict)
 
 def decode_sas_datetime(datestring):
     '''
