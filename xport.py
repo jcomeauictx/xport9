@@ -306,20 +306,14 @@ def decode_date(rawdatum):
     r'''
     SAS date values are stored internally as the number of days from 1960-01-01
 
-    but what was found experimentally is that, of for example
-    0x4456170000000000, 0x5617 is the number of days; the meaning of 0x44 in
-    the first byte is as yet undetermined.
-
     >>> decode_date(b'\x44\x56\x17\0\0\0\0\0')
     '2020-05-04'
     '''
-    if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
-        offset, = struct.unpack('>H', rawdatum[1:3])
-        date = str((SAS_EPOCH + timedelta(days=offset)).date())
-    elif rawdatum == b'.\0\0\0\0\0\0\0':
+    if rawdatum == b'.\0\0\0\0\0\0\0':
         date = None
     else:
-        raise ValueError('Unknown DATE representation %r' % rawdatum)
+        offset = ibm_to_double(rawdatum)
+        date = str((SAS_EPOCH + timedelta(days=offset)).date())
     if os.getenv('DEBUG_DATETIMES') and date is not None:
         date += (' (DATE %s)' % rawdatum.hex())
     return date
@@ -332,9 +326,9 @@ def decode_time(rawdatum):
     >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
     '14:17:00'
     >>> decode_time(b'\x45\x10\x15\x80\0\0\0\0')
-    '18:18:00'
+    '19:44:00'
     >>> decode_time(b'\x43\x3f\xc0\0\0\0\0\0')
-    '00:17:00'
+    '00:16:00'
     '''
     if rawdatum in [b'.\0\0\0\0\0\0\0', b'\0\0\0\0\0\0\0\0']:
         time = None
@@ -358,13 +352,11 @@ def decode_datetime(rawdatum):
     >>> decode_datetime(b'\x48\x71\x80\x1b\x5c\0\0\0')
     '2020-05-04 14:17:00'
     '''
-    if rawdatum[0] == 0x48 and rawdatum[5:] == b'\0\0\0':
-        offset = struct.unpack('>L', rawdatum[1:5])[0]
-        date_time = str(SAS_EPOCH + timedelta(seconds=offset))
-    elif rawdatum == b'.\0\0\0\0\0\0\0':
+    if rawdatum == b'.\0\0\0\0\0\0\0':
         date_time = None
     else:
-        raise ValueError('Unknown DATETIME representation %r' % rawdatum)
+        offset = ibm_to_double(rawdatum)
+        date_time = str(SAS_EPOCH + timedelta(seconds=offset))
     if os.getenv('DEBUG_DATETIMES') and date_time is not None:
         date_time += ' (DATETIME %s)' % rawdatum.hex()
     return date_time
@@ -491,8 +483,8 @@ def bitmask(bits, reverse=False):
     1
     >>> bitmask(0)
     0
-    >>> bitmask(2), True
-    2
+    >>> bitmask(2, True)
+    4
     >>> bitmask(4, True)
     16
     '''
