@@ -36,8 +36,10 @@ logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
 # python2 compatibility
 try:
-    unichr(42)
+    unichr(42)  # pylint: disable=used-before-assignment
     # pylint: disable=redefined-builtin, invalid-name
+    OLD_UNICHR = unichr
+    unichr = lambda arg: OLD_UNICHR(arg).encode('utf8')
     class bytes(str):
         '''
         fake `bytes` class to make doctests pass
@@ -46,7 +48,7 @@ try:
             logging.log(logging.NOTSET, 'ignoring encoding %s', encoding)
             if isinstance(initial, list):
                 initial = ''.join(map(chr, initial))
-            return super(bytes, cls).__new__(cls, initial.encode(encoding))
+            return super(bytes, cls).__new__(cls, initial)
         def __repr__(self):
             return 'b' + super(bytes, self).__repr__()
         __str__ = __repr__
@@ -140,7 +142,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     # pylint: disable=too-many-locals, too-many-statements  # can't be helped
     infile = open(filename, 'rb') if filename is not None else sys.stdin
-    outfile = open(outfilename, 'wb') if outfilename is not None else sys.stdout
+    outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
