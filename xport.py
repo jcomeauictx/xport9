@@ -453,7 +453,7 @@ def ibm_to_double(bytestring, pack_output=False):
         + (IBM.exponent_multiplier - shift)
         + IEEE.exponent_bias
     ) << IEEE.mantissa_bits
-    if exponent.bit_length() > 63:
+    if exponent.bit_length() > IBM.mantissa_bits + IBM.exponent_bits:
         raise FloatingPointError('Exponent %s too large' % exponent)
     bits_lost = IBM.mantissa_bits - IEEE.mantissa_bits
     if mantissa & bitmask(bits_lost):
