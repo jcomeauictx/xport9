@@ -37,18 +37,13 @@ logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 # python2 compatibility
 try:
     unichr(42)
-    unicode()
+    # pylint: disable=redefined-builtin, invalid-name
+    bytes = type('bytes', (str,), {
+        '__repr__': lambda self: 'b' + str.__repr__(self)
+    })
 except NameError:
     # pylint: disable=invalid-name
     unichr = chr
-    unicode = type(
-        'unicode',
-        (str,),
-        {
-            '__repr__': lambda self: 'u' + str.__repr__(self).encode(
-                'unicode-escape').decode(),
-        }
-    )
 
 SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
 LIBRARY_HEADER = b'^HEADER RECORD\\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
@@ -136,7 +131,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     # pylint: disable=too-many-locals, too-many-statements  # can't be helped
     infile = open(filename, 'rb') if filename is not None else sys.stdin
-    outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
+    outfile = open(outfilename, 'wb') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
@@ -381,10 +376,10 @@ def decode_string(string):
 
     may need to try different encodings, but for now assume utf8
 
-    >>> unicode(decode_string(b'\0\0\0\0\0    '))
-    u''
-    >>> unicode(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'))
-    u'ABC 3\u03bcg'
+    >>> decode_string(b'\0\0\0\0\0    ')
+    b''
+    >>> decode_string(b'ABC 3(*ESC*){unicode 03BC}g')
+    b'ABC 3\xce\xbcg'
     '''
     decoded = string.rstrip(b'\0 ')
     cleaned = re.sub(
@@ -392,11 +387,7 @@ def decode_string(string):
         lambda match: unichr(int(match.group(1), 16)).encode('utf8'),
         decoded
     )
-    try:
-        cleaned = cleaned.decode('utf8')  # for python2
-    except AttributeError:
-        pass
-    return cleaned
+    return bytes(cleaned)
 
 def decode_sas_datetime(datestring):
     '''
