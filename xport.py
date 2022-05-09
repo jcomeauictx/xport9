@@ -4,9 +4,7 @@ SAS .xpt (transport) versions 8 and 9 converter
 
 written so as to support older formats as well, but not well tested for those.
 
-*PRIMARILY* to support decoding of possibly obfuscated .xpt files from
-Pfizer/FDA. look at decode_time() to see what I'm talking about. so, this
-may not work with "normal" SAS files.
+*PRIMARILY* to support decoding of .xpt files from Pfizer/FDA.
 
 https://support.sas.com/content/dam/SAS/support/en/technical-papers/
 record-layout-of-a-sas-version-8-or-9-data-set-in-sas-transport-format.pdf
@@ -30,7 +28,7 @@ note on missing values:
     The SAS *source code* representation of the above is dot (.),
     space (' '), and dot-character .A, .B, ..., ._
 '''
-import sys, os, re, csv  # pylint: disable=multiple-imports
+import sys, re, csv  # pylint: disable=multiple-imports
 import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
@@ -319,8 +317,6 @@ def decode_date(rawdatum):
     else:
         offset = ibm_to_double(rawdatum)
         date = str((SAS_EPOCH + timedelta(days=offset)).date())
-    if os.getenv('DEBUG_DATETIMES') and date is not None:
-        date += (' (DATE %s)' % rawdatum.hex())
     return date
 
 def decode_time(rawdatum):
@@ -340,8 +336,6 @@ def decode_time(rawdatum):
     else:
         offset = ibm_to_double(rawdatum)
         time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
-    if os.getenv('DEBUG_DATETIMES') and time is not None:
-        time += (' (TIME %s)' % rawdatum.hex())
     return time
 
 def decode_datetime(rawdatum):
@@ -362,8 +356,6 @@ def decode_datetime(rawdatum):
     else:
         offset = ibm_to_double(rawdatum)
         date_time = str(SAS_EPOCH + timedelta(seconds=offset))
-    if os.getenv('DEBUG_DATETIMES') and date_time is not None:
-        date_time += ' (DATETIME %s)' % rawdatum.hex()
     return date_time
 
 def decode_string(string):
@@ -427,8 +419,6 @@ def ibm_to_double(bytestring, pack_output=False):
     territory. there can be up to 3 unused bits in the first nybble of
     the mantissa.
 
-    see https://stackoverflow.com/a/7141227/493161
-
     >>> ibm = TESTVECTORS['xpt']
     >>> ieee = TESTVECTORS['ieee']
     >>> [struct.unpack('<d', ieee[key])[0] for key in sorted(ieee)]
@@ -438,6 +428,10 @@ def ibm_to_double(bytestring, pack_output=False):
     >>> {key: ibm_to_double(ibm[key], True) for key in ibm} == ieee
     True
     >>> ibm_to_double(b'.\0\0\0\0\0\0\0')
+
+    # check for warning for lost bits
+    >>> ibm_to_double(b'\x41\x3f\xff\xff\xff\xff\xff\xff')
+    3.9999999999999996
     '''
     check = bytestring.rstrip(b'\0')
     if len(check) <= 1:
@@ -447,18 +441,13 @@ def ibm_to_double(bytestring, pack_output=False):
     # varname, = something  # is an easy way to unpack a one-element tuple.
     # I saw it while perusing the pypi xport code
     integer, = struct.unpack('>Q', bytestring)
-    logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
     sign = integer & bitmask(IBM.bits - 1, reverse=True)
     remainder = integer & bitmask(IBM.bits - 1)
-    logging.debug('sign %d, remainder 0x%016x', sign, remainder)
     exponent = (remainder >> IBM.mantissa_bits) - IBM.exponent_bias - 1
     mantissa = remainder & bitmask(IBM.mantissa_bits)
+    # shift the high bit out to the left and chop it off for IEEE format
     shift = IBM.mantissa_bits - mantissa.bit_length() + 1
-    logging.debug('exponent: %d, mantissa: 0x%016x, shift: %d before shift',
-                  exponent, mantissa, shift)
     mantissa = (mantissa << shift) & bitmask(IBM.mantissa_bits)
-    logging.debug('exponent: %d, mantissa: 0x%016x after shift',
-                  exponent, mantissa)
     exponent = (
         (exponent * IBM.exponent_multiplier)
         + (IBM.exponent_multiplier - shift)
@@ -466,11 +455,12 @@ def ibm_to_double(bytestring, pack_output=False):
     ) << IEEE.mantissa_bits
     if exponent.bit_length() > 63:
         raise FloatingPointError('Exponent %s too large' % exponent)
+    bits_lost = IBM.mantissa_bits - IEEE.mantissa_bits
+    if mantissa & bitmask(bits_lost):
+        logging.warning('Losing low %d bits %s of %s', bits_lost,
+                        bin(mantissa & bitmask(bits_lost)), bin(mantissa))
     mantissa >>= (IBM.mantissa_bits - IEEE.mantissa_bits)
-    logging.debug('exponent: 0x%016x, mantissa: 0x%016x before repack',
-                  exponent, mantissa)
     repacked = struct.pack('>Q', sign | exponent | mantissa)
-    logging.debug('repacked >Q: %r', repacked)
     sliced = slice(None) if sys.byteorder == 'big' else slice(None, None, -1)
     return repacked[sliced] if pack_output else struct.unpack('>d', repacked)[0]
 
