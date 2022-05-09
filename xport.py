@@ -84,12 +84,17 @@ TESTVECTORS = {
         1: b'\x41\x10\0\0\0\0\0\0',
         -1: b'\xc1\x10\0\0\0\0\0\0',
         0: b'\0\0\0\0\0\0\0\0',
-        2: b'\x41\x20\0\0\0\0\0\0'},
+        2: b'\x41\x20\0\0\0\0\0\0',
+        # more to make sure needed bits aren't truncated
+        3: b'\x41\x30\0\0\0\0\0\0',
+    },
     'ieee': {
         1: b'\0\0\0\0\0\0\xf0\x3f',
         -1: b'\0\0\0\0\0\0\xf0\xbf',
         0: b'\0\0\0\0\0\0\0\0',
-        2: b'\0\0\0\0\0\0\0\x40'}
+        2: b'\0\0\0\0\0\0\0\x40',
+        3: b'\0\0\0\0\0\0\x08\x40',
+    }
 }
 IBM = type('IBM', (), {
     'bits': 64,  # assuming double width floats as used by SAS
@@ -326,9 +331,9 @@ def decode_time(rawdatum):
     >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
     '14:17:00'
     >>> decode_time(b'\x45\x10\x15\x80\0\0\0\0')
-    '19:44:00'
+    '18:18:00'
     >>> decode_time(b'\x43\x3f\xc0\0\0\0\0\0')
-    '00:16:00'
+    '00:17:00'
     '''
     if rawdatum in [b'.\0\0\0\0\0\0\0', b'\0\0\0\0\0\0\0\0']:
         time = None
@@ -427,9 +432,9 @@ def ibm_to_double(bytestring, pack_output=False):
     >>> ibm = TESTVECTORS['xpt']
     >>> ieee = TESTVECTORS['ieee']
     >>> [struct.unpack('<d', ieee[key])[0] for key in sorted(ieee)]
-    [-1.0, 0.0, 1.0, 2.0]
+    [-1.0, 0.0, 1.0, 2.0, 3.0]
     >>> [ibm_to_double(ibm[key]) for key in sorted(ibm)]
-    [-1.0, 0.0, 1.0, 2.0]
+    [-1.0, 0.0, 1.0, 2.0, 3.0]
     >>> {key: ibm_to_double(ibm[key], True) for key in ibm} == ieee
     True
     >>> ibm_to_double(b'.\0\0\0\0\0\0\0')
@@ -448,7 +453,7 @@ def ibm_to_double(bytestring, pack_output=False):
     logging.debug('sign %d, remainder 0x%016x', sign, remainder)
     exponent = (remainder >> IBM.mantissa_bits) - IBM.exponent_bias - 1
     mantissa = remainder & bitmask(IBM.mantissa_bits)
-    shift = IBM.mantissa_bits - mantissa.bit_length()
+    shift = IBM.mantissa_bits - mantissa.bit_length() + 1
     logging.debug('exponent: %d, mantissa: 0x%016x, shift: %d before shift',
                   exponent, mantissa, shift)
     mantissa = (mantissa << shift) & bitmask(IBM.mantissa_bits)
@@ -456,13 +461,12 @@ def ibm_to_double(bytestring, pack_output=False):
                   exponent, mantissa)
     exponent = (
         (exponent * IBM.exponent_multiplier)
-        + (IBM.exponent_multiplier - (shift + 1))
+        + (IBM.exponent_multiplier - shift)
         + IEEE.exponent_bias
     ) << IEEE.mantissa_bits
     if exponent.bit_length() > 63:
         raise FloatingPointError('Exponent %s too large' % exponent)
-    mantissa <<= (IBM.mantissa_bits - IEEE.mantissa_bits)
-    mantissa = (mantissa >> 3) & ((1 << 52) - 1)  # chop most significant bit
+    mantissa >>= (IBM.mantissa_bits - IEEE.mantissa_bits)
     logging.debug('exponent: 0x%016x, mantissa: 0x%016x before repack',
                   exponent, mantissa)
     repacked = struct.pack('>Q', sign | exponent | mantissa)
