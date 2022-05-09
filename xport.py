@@ -1,4 +1,5 @@
 #!/usr/bin/python3 -OO
+# -*- coding: utf-8 -*-
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 
@@ -33,48 +34,63 @@ import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
+# python2 compatibility
+try:
+    unichr(42)
+    unicode()
+except NameError:
+    # pylint: disable=invalid-name
+    unichr = chr
+    unicode = type(
+        'unicode',
+        (str,),
+        {
+            '__repr__': lambda self: 'u' + str.__repr__(self),
+        }
+    )
+
 SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
-LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
-REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+LIBRARY_HEADER = b'^HEADER RECORD\\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
+REAL_HEADER = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 MEMBER_HEADER = (
-    rb'^HEADER RECORD\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
+    b'^HEADER RECORD\\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
 )
 DESCRIPTOR_HEADER = (
-    rb'^HEADER RECORD\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
+    b'^HEADER RECORD\\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
 )
 # "The data following the DSCPTV8 record allows for a 32-character member name.
 # "In the Version 6-styleformat, the member name was only 8 characters."
-REAL_MEMBER_HEADER_6 = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
-REAL_MEMBER_HEADER_8 = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
-REAL_MEMBER_HEADER2 = rb'^(.{16}) {16}(.{40})(.{8})$'
+REAL_MEMBER_HEADER_6 = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+REAL_MEMBER_HEADER_8 = b'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
+REAL_MEMBER_HEADER2 = b'^(.{16}) {16}(.{40})(.{8})$'
 NAMESTR_HEADER = (
-    rb'^HEADER RECORD\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
+    b'^HEADER RECORD\\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
 )
 OBSERVATION_HEADER = (
-    rb'HEADER RECORD\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
+    b'HEADER RECORD\\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
 )
 NAMESTR = (
     # all 2-byte fields below are shorts except for nfill
     # the only other number is npos, which is a long
     # all the rest are character data or fill
-    rb'^(?P<ntype>.{2})'  # variable type, 1=numeric, 2=char
-    rb'(?P<nhfun>.{2})'   # hash of name (always 0)
-    rb'(?P<nlng>.{2})'    # length of variable in observation
-    rb'(?P<nvar0>.{2})'   # varnum (variable number)
-    rb'(?P<nname>.{8})'   # name of variable
-    rb'(?P<nlabel>.{40})' # label of variable
-    rb'(?P<nform>.{8})'   # name of format
-    rb'(?P<nfl>.{2})'     # format field length
-    rb'(?P<nfd>.{2})'     # format number of decimals
-    rb'(?P<nfj>.{2})'     # justification, 0=left, 1=right
-    rb'(?P<nfill>.{2})'   # unused, for alignment and future
-    rb'(?P<niform>.{8})'  # name of input format
-    rb'(?P<nifl>.{2})'    # informat length attribute
-    rb'(?P<nifd>.{2})'    # informat number of decimals
-    rb'(?P<npos>.{4})'    # position of value in observation
-    rb'(?P<longname>.{32})'  # long name for version 8 style labels
-    rb'(?P<lablen>.{2})'  # length of label
-    rb'(?P<rest>.{18})$'   # "remaining fields are irrelevant"
+    b'^(?P<ntype>.{2})'  # variable type, 1=numeric, 2=char
+    b'(?P<nhfun>.{2})'   # hash of name (always 0)
+    b'(?P<nlng>.{2})'    # length of variable in observation
+    b'(?P<nvar0>.{2})'   # varnum (variable number)
+    b'(?P<nname>.{8})'   # name of variable
+    b'(?P<nlabel>.{40})' # label of variable
+    b'(?P<nform>.{8})'   # name of format
+    b'(?P<nfl>.{2})'     # format field length
+    b'(?P<nfd>.{2})'     # format number of decimals
+    b'(?P<nfj>.{2})'     # justification, 0=left, 1=right
+    b'(?P<nfill>.{2})'   # unused, for alignment and future
+    b'(?P<niform>.{8})'  # name of input format
+    b'(?P<nifl>.{2})'    # informat length attribute
+    b'(?P<nifd>.{2})'    # informat number of decimals
+    b'(?P<npos>.{4})'    # position of value in observation
+    b'(?P<longname>.{32})'  # long name for version 8 style labels
+    b'(?P<lablen>.{2})'  # length of label
+    b'(?P<rest>.{18})$'   # "remaining fields are irrelevant"
 )
 TESTVECTORS = {
     # from PDF referenced above
@@ -364,18 +380,21 @@ def decode_string(string):
 
     may need to try different encodings, but for now assume utf8
 
-    >>> decode_string(b'\0\0\0\0\0    ')
-    ''
-    >>> decode_string(b'ABC 3(*ESC*){unicode 03BC}g')
-    'ABC 3μg'
+    >>> unicode(decode_string(b'\0\0\0\0\0    '))
+    u''
+    >>> unicode(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'))
+    u'ABC 3μg'
     '''
-    decoded = string.rstrip(b'\0 ').decode()
+    decoded = string.rstrip(b'\0 ')
     cleaned = re.sub(
-        re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
-        lambda match: chr(int(match.group(1), 16)),
+        re.compile(b'\\(\\*ESC\\*\\)\\{unicode ([0-9a-fA-F]+)\\}'),
+        lambda match: unichr(int(match.group(1), 16)).encode(),
         decoded
     )
-    return cleaned
+    try:
+        return cleaned.decode()
+    except AttributeError:
+        return cleaned
 
 def decode_sas_datetime(datestring):
     '''
