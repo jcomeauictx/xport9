@@ -45,7 +45,8 @@ except NameError:
         'unicode',
         (str,),
         {
-            '__repr__': lambda self: 'u' + str.__repr__(self),
+            '__repr__': lambda self: 'u' + str.__repr__(self).encode(
+                'unicode-escape').decode(),
         }
     )
 
@@ -383,18 +384,19 @@ def decode_string(string):
     >>> unicode(decode_string(b'\0\0\0\0\0    '))
     u''
     >>> unicode(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'))
-    u'ABC 3μg'
+    u'ABC 3\u03bcg'
     '''
     decoded = string.rstrip(b'\0 ')
     cleaned = re.sub(
         re.compile(b'\\(\\*ESC\\*\\)\\{unicode ([0-9a-fA-F]+)\\}'),
-        lambda match: unichr(int(match.group(1), 16)).encode(),
+        lambda match: unichr(int(match.group(1), 16)).encode('utf8'),
         decoded
     )
     try:
-        return cleaned.decode()
+        cleaned = cleaned.decode('utf8')  # for python2
     except AttributeError:
-        return cleaned
+        pass
+    return cleaned
 
 def decode_sas_datetime(datestring):
     '''
