@@ -140,7 +140,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     # pylint: disable=too-many-locals, too-many-statements  # can't be helped
     infile = open(filename, 'rb') if filename is not None else sys.stdin
-    outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
+    outfile = open(outfilename, 'wb') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
@@ -390,7 +390,8 @@ def decode_string(string):
     >>> bytes(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'), 'utf8')
     b'ABC 3\xce\xbcg'
     '''
-    decoded = string.rstrip(b'\0 ').decode()
+    stripped = string.rstrip(b'\0 ')
+    decoded = stripped.decode('utf8') if sys.version_info >= (3,) else stripped
     cleaned = re.sub(
         re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
         lambda match: unichr(int(match.group(1), 16)),
