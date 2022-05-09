@@ -38,9 +38,18 @@ logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 try:
     unichr(42)
     # pylint: disable=redefined-builtin, invalid-name
-    bytes = type('bytes', (str,), {
-        '__repr__': lambda self: 'b' + str.__repr__(self)
-    })
+    class bytes(str):
+        '''
+        fake `bytes` class to make doctests pass
+        '''
+        def __new__(cls, initial='', encoding='utf8'):
+            logging.log(logging.NOTSET, 'ignoring encoding %s', encoding)
+            if isinstance(initial, list):
+                initial = ''.join(map(chr, initial))
+            return super(bytes, cls).__new__(cls, initial.encode(encoding))
+        def __repr__(self):
+            return 'b' + super(bytes, self).__repr__()
+        __str__ = __repr__
 except NameError:
     # pylint: disable=invalid-name
     unichr = chr
@@ -131,7 +140,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     # pylint: disable=too-many-locals, too-many-statements  # can't be helped
     infile = open(filename, 'rb') if filename is not None else sys.stdin
-    outfile = open(outfilename, 'wb') if outfilename is not None else sys.stdout
+    outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
@@ -376,18 +385,18 @@ def decode_string(string):
 
     may need to try different encodings, but for now assume utf8
 
-    >>> decode_string(b'\0\0\0\0\0    ')
+    >>> bytes(decode_string(b'\0\0\0\0\0    '), 'utf8')
     b''
-    >>> decode_string(b'ABC 3(*ESC*){unicode 03BC}g')
+    >>> bytes(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'), 'utf8')
     b'ABC 3\xce\xbcg'
     '''
-    decoded = string.rstrip(b'\0 ')
+    decoded = string.rstrip(b'\0 ').decode()
     cleaned = re.sub(
-        re.compile(b'\\(\\*ESC\\*\\)\\{unicode ([0-9a-fA-F]+)\\}'),
-        lambda match: unichr(int(match.group(1), 16)).encode('utf8'),
+        re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
+        lambda match: unichr(int(match.group(1), 16)),
         decoded
     )
-    return bytes(cleaned)
+    return cleaned
 
 def decode_sas_datetime(datestring):
     '''
