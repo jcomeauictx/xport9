@@ -24,8 +24,11 @@ note on missing values:
     A missing numeric value is a single dot (char(0x2e)) followed by 7 nulls:
     ".\0\0\0\0\0\0\0"
     A missing character value is a single space followed by nulls: " \0\0..."
-    A missing special format value is a dot followed by the letter A-Z
-    representing the special value, followed by nulls, e.g. ".B\0\0\0..."
+    A missing special format value is a character [A-Z_] (0x41 through 0x5a
+    plus 0x5f representing the special value, followed by nulls,
+    e.g. "B\0\0\0..."
+    The SAS *source code* representation of the above is dot (.),
+    space (' '), and dot-character .A, .B, ..., ._
 '''
 import sys, os, re, csv  # pylint: disable=multiple-imports
 import struct, math, logging  # pylint: disable=multiple-imports
@@ -88,6 +91,24 @@ TESTVECTORS = {
         0: b'\0\0\0\0\0\0\0\0',
         2: b'\0\0\0\0\0\0\0\x40'}
 }
+IBM = type('IBM', (), {
+    'bits': 64,  # assuming double width floats as used by SAS
+    'mantissa_bits': 56,
+    'normalized': False,  # no guarantee of leading bit=1
+    'implied_one_bit': False,  # no implied 57th bit=1
+    'exponent_bits': 7,
+    'exponent_multiplier': 4,  # every bump in exponent shifts another nybble
+    'exponent_bias': 64,  # number added to exponent before packing
+})
+IEEE = type('IEEE', (), {
+    'bits': 64,
+    'mantissa_bits': 52,
+    'normalized': True,  # mantissa shifted to mantissa_bits + 1
+    'implied_one_bit': True,  # 52-bit mantissa has implied 53rd bit=1
+    'exponent_bits': 11,
+    'exponent_multiplier': 1,  # every bump in exponent shifts another bit
+    'exponent_bias': 1023,
+})
 
 def xpt_to_csv(filename=None, outfilename=None):
     '''
@@ -260,7 +281,7 @@ def unpack_name(groupdict):
             groupdict[key] = value.rstrip(b'\0 ').decode()
         else:
             packformat = '>h' if len(value) == 2 else '>l'
-            groupdict[key] = struct.unpack(packformat, value)[0]
+            groupdict[key], = struct.unpack(packformat, value)
     logging.debug('groupdict: %s', groupdict)
     return groupdict
 
@@ -293,7 +314,7 @@ def decode_date(rawdatum):
     '2020-05-04'
     '''
     if rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
-        offset = struct.unpack('>H', rawdatum[1:3])[0]
+        offset, = struct.unpack('>H', rawdatum[1:3])
         date = str((SAS_EPOCH + timedelta(days=offset)).date())
     elif rawdatum == b'.\0\0\0\0\0\0\0':
         date = None
@@ -308,9 +329,6 @@ def decode_time(rawdatum):
     SAS time values are stored internally as the number of seconds
     since midnight
 
-    example is 0x44c8dc0000000000. but an offset of 0xffff is only 6:12:15 PM,
-    so there are other formats in use.
-
     >>> decode_time(b'\x44\xc8\xdc\0\0\0\0\0')
     '14:17:00'
     >>> decode_time(b'\x45\x10\x15\x80\0\0\0\0')
@@ -318,22 +336,11 @@ def decode_time(rawdatum):
     >>> decode_time(b'\x43\x3f\xc0\0\0\0\0\0')
     '00:17:00'
     '''
-    if rawdatum[0] == 0x43 and rawdatum[3:] == b'\0\0\0\0\0':
-        modified = rawdatum[1:3]
-        offset = struct.unpack('>H', modified)[0] / 16
-        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
-    elif rawdatum[0] == 0x44 and rawdatum[3:] == b'\0\0\0\0\0':
-        modified = rawdatum[1:3]
-        offset = struct.unpack('>H', modified)[0]
-        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
-    elif rawdatum[0] == 0x45 and rawdatum[4:] == b'\0\0\0\0':
-        modified = b'\0' + rawdatum[1:4]
-        offset = struct.unpack('>L', modified)[0] >> 4
-        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
-    elif rawdatum in [b'.\0\0\0\0\0\0\0', b'\0\0\0\0\0\0\0\0']:
+    if rawdatum in [b'.\0\0\0\0\0\0\0', b'\0\0\0\0\0\0\0\0']:
         time = None
     else:
-        raise ValueError('Unknown TIME representation %r' % rawdatum)
+        offset = ibm_to_double(rawdatum)
+        time = str((SAS_EPOCH + timedelta(seconds=offset)).time())
     if os.getenv('DEBUG_DATETIMES') and time is not None:
         time += (' (TIME %s)' % rawdatum.hex())
     return time
@@ -408,15 +415,20 @@ def ibm_to_double(bytestring, pack_output=False):
 
     where s=sign bit, e=exponent bits, m=mantissa bits
 
-    it doesn't map directly, though: IEEE uses a "biased" exponent, where
-    the bias of 1023 is added to the actual exponent, whereas IBM's bias
-    is 64.
+    it doesn't map directly, though: they both use a "biased" exponent.
+    IEEE adds 1023 to the actual exponent, whereas IBM's bias is 64.
+
+    the IBM exponent is base 16, i.e., a '1' shifts a nybble, as opposed to
+    a single bit with the IEEE exponent.
 
     and the IEEE mantissa is normalized to a number between 1 and 2, and
     its representation has an assumed 53rd bit of 1; only the fractional
     bits are stored in the low 52 bits.
 
-    whereas the IBM mantissa can be up to, but not including, 16.
+    whereas the IBM mantissa is all fractional, and any value 1 or above
+    must have an exponent of 1 to shift the top nybble into integral
+    territory. there can be up to 3 unused bits in the first nybble of
+    the mantissa.
 
     see https://stackoverflow.com/a/7141227/493161
 
@@ -430,26 +442,61 @@ def ibm_to_double(bytestring, pack_output=False):
     True
     >>> ibm_to_double(b'.\0\0\0\0\0\0\0')
     '''
-    if bytestring == b'.\0\0\0\0\0\0\0':  # missing numeric value
-        return None
-    integer = struct.unpack('>Q', bytestring)[0]
+    check = bytestring.rstrip(b'\0')
+    if len(check) <= 1:
+        if not check:
+            return bytestring if pack_output else 0.0
+        return None if check == b'.' else math.nan
+    # varname, = something  # is an easy way to unpack a one-element tuple.
+    # I saw it while perusing the pypi xport code
+    integer, = struct.unpack('>Q', bytestring)
     logging.debug('bytestring: %r, integer 0x%016x', bytestring, integer)
-    if integer == 0:
-        return b'\0\0\0\0\0\0\0\0' if pack_output else 0.0
-    sign = -1 if integer & 0x8000000000000000 else 1
-    remainder = integer & 0x7fffffffffffffff
+    sign = integer & bitmask(IBM.bits - 1, reverse=True)
+    remainder = integer & bitmask(IBM.bits - 1)
     logging.debug('sign %d, remainder 0x%016x', sign, remainder)
-    exponent = (remainder >> 56) - 64
-    mantissa = (remainder & ((1 << 56) - 1)) / float(1 << 52)
-    logging.debug('exponent: 0x%04x, mantissa: %f', exponent, mantissa)
-    try:
-        double = sign * mantissa ** exponent
-        logging.debug('double: %f', double)
-        return struct.pack('d', double) if pack_output else double
-    except ZeroDivisionError:
-        logging.error('cannot convert sign %d, mantissa %f, and exponent %d'
-                      ' to float', sign, mantissa, exponent)
-        return math.nan
+    exponent = (remainder >> IBM.mantissa_bits) - IBM.exponent_bias - 1
+    mantissa = remainder & bitmask(IBM.mantissa_bits)
+    shift = IBM.mantissa_bits - mantissa.bit_length()
+    logging.debug('exponent: %d, mantissa: 0x%016x, shift: %d before shift',
+                  exponent, mantissa, shift)
+    mantissa = (mantissa << shift) & bitmask(IBM.mantissa_bits)
+    logging.debug('exponent: %d, mantissa: 0x%016x after shift',
+                  exponent, mantissa)
+    exponent = (
+        (exponent * IBM.exponent_multiplier)
+        + (IBM.exponent_multiplier - (shift + 1))
+        + IEEE.exponent_bias
+    ) << IEEE.mantissa_bits
+    if exponent.bit_length() > 63:
+        raise FloatingPointError('Exponent %s too large' % exponent)
+    mantissa <<= (IBM.mantissa_bits - IEEE.mantissa_bits)
+    mantissa = (mantissa >> 3) & ((1 << 52) - 1)  # chop most significant bit
+    logging.debug('exponent: 0x%016x, mantissa: 0x%016x before repack',
+                  exponent, mantissa)
+    repacked = struct.pack('>Q', sign | exponent | mantissa)
+    logging.debug('repacked >Q: %r', repacked)
+    sliced = slice(None) if sys.byteorder == 'big' else slice(None, None, -1)
+    return repacked[sliced] if pack_output else struct.unpack('>d', repacked)[0]
+
+def bitmask(bits, reverse=False):
+    '''
+    return bitmask for the given number of bits
+
+    this means all binary ones, unless reverse=True, in which case only 1
+    bit, the highest, is set, while `bits` bits are zeroed out
+
+    >>> bitmask(3)
+    7
+    >>> bitmask(1)
+    1
+    >>> bitmask(0)
+    0
+    >>> bitmask(2), True
+    2
+    >>> bitmask(4, True)
+    16
+    '''
+    return 0 if bits < 1 else (1 << bits) - (not reverse)
 
 if __name__ == '__main__':
     xpt_to_csv(*sys.argv[1:])
