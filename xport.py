@@ -55,6 +55,10 @@ try:
 except NameError:
     # pylint: disable=invalid-name
     unichr = chr
+try:
+    math.nan
+except AttributeError:
+    math.nan = 'nan'
 
 SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
 LIBRARY_HEADER = b'^HEADER RECORD\\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
@@ -140,19 +144,26 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     convert xpt file to csv format
     '''
-    # pylint: disable=too-many-locals, too-many-statements  # can't be helped
+    # too many locals and statements can't be helped
+    # pylint: disable=bad-option-value, too-many-locals, too-many-statements
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
     def get_library_header(record):
+        '''
+        helper function to parse library header
+        '''
         pattern = re.compile(LIBRARY_HEADER, re.DOTALL)
         if not pattern.match(record):
             raise ValueError('Invalid library header %r' % record)
         logging.debug('found library header')
         return 'awaiting_real_header'
     def get_real_header(record):
+        '''
+        helper function to parse "real" header
+        '''
         pattern = re.compile(REAL_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -167,21 +178,33 @@ def xpt_to_csv(filename=None, outfilename=None):
         assert document['sas_version'] and document['os']
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
+        '''
+        helper function to parse modification time header
+        '''
         document['modified'] = decode_sas_datetime(record.rstrip().decode())
         return 'awaiting_member_header'
     def get_member_header(record):
+        '''
+        helper function to parse member header
+        '''
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid member header' % record)
         return 'awaiting_member_descriptor'
     def get_descriptor(record):
+        '''
+        helper function to parse descriptor
+        '''
         pattern = re.compile(DESCRIPTOR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid descriptor header' % record)
         return 'awaiting_member_data'
     def get_member_data(record, attempt=1):
+        '''
+        helper function to parse member data
+        '''
         if attempt > 2:
             raise ValueError('%r not valid in old or new schema' % record)
         real_header = 'REAL_MEMBER_HEADER_%d' % document['real_version']
@@ -205,12 +228,16 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('member: %s', member)
         if not (member['sas_version'] and member['os']):
             # assume wrong "real" version, and switch
-            document['real_version'] = (6, 8)[document['real_version'] == 6]
+            version = document['real_version']
+            document['real_version'] = 8 if version == 6 else 6
             logging.warning('trying again with version %d',
                             document['real_version'])
             return get_member_data(record, attempt + 1)
         return 'awaiting_second_header'
     def get_second_header(record):
+        '''
+        helper function to parse member modification time and other attributes
+        '''
         pattern = re.compile(REAL_MEMBER_HEADER2, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -228,6 +255,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         ])
         return 'awaiting_namestr_header'
     def get_namestr_header(record):
+        '''
+        helper function to parse namestr header
+        '''
         pattern = re.compile(NAMESTR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -235,6 +265,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('unknown value in namestr header: %s', match.group(1))
         return 'awaiting_namestr_records'
     def get_namestr_records(record):
+        '''
+        helper function to parse namestr records (spreadsheet column headers)
+        '''
         pattern = re.compile(OBSERVATION_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -261,6 +294,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['recordlength'] = last['npos'] + last['nlng']
         return 'awaiting_observation_records'
     def get_observation_records(record):
+        '''
+        helper function to parse observation records (spreadsheet rows)
+        '''
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         member = document['members'][-1]
