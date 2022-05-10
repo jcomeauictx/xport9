@@ -60,6 +60,12 @@ try:
 except AttributeError:
     math.nan = 'nan'
 
+if hasattr(sys.stdin, 'buffer'):
+    # python3, sys.stdin.buffer is the bytes interface
+    STDIN = sys.stdin.buffer  # pylint: disable=no-member
+else:
+    STDIN = sys.stdin
+
 SAS_HEADER = lambda headertype, data: b''.join([
     b'^HEADER RECORD\\*{7}', headertype, b' +HEADER RECORD!{7}', data, b' *$'
 ])
@@ -141,7 +147,7 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     # too many locals and statements can't be helped
     # pylint: disable=bad-option-value, too-many-locals, too-many-statements
-    infile = open(filename, 'rb') if filename is not None else sys.stdin
+    infile = open(filename, 'rb') if filename is not None else STDIN
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
