@@ -60,26 +60,21 @@ try:
 except AttributeError:
     math.nan = 'nan'
 
+SAS_HEADER = lambda headertype, data: b''.join([
+    b'^HEADER RECORD\\*{7}', headertype, b' +HEADER RECORD!{7}', data, b' *$'
+])
 SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
-LIBRARY_HEADER = b'^HEADER RECORD\\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
+LIBRARY_HEADER = SAS_HEADER(b'LIB[A-Z0-9]+', b'0{30}')
 REAL_HEADER = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
-MEMBER_HEADER = (
-    b'^HEADER RECORD\\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
-)
-DESCRIPTOR_HEADER = (
-    b'^HEADER RECORD\\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
-)
+MEMBER_HEADER = SAS_HEADER(b'MEM[A-Z0-9]+', b'0{16}01600000000140')
+DESCRIPTOR_HEADER = SAS_HEADER(b'DSC[A-Z0-9]+', b'0{30}')
 # "The data following the DSCPTV8 record allows for a 32-character member name.
 # "In the Version 6-styleformat, the member name was only 8 characters."
 REAL_MEMBER_HEADER_6 = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 REAL_MEMBER_HEADER_8 = b'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
 REAL_MEMBER_HEADER2 = b'^(.{16}) {16}(.{40})(.{8})$'
-NAMESTR_HEADER = (
-    b'^HEADER RECORD\\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
-)
-OBSERVATION_HEADER = (
-    b'HEADER RECORD\\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
-)
+NAMESTR_HEADER = SAS_HEADER(b'NAM[A-Z0-9]+', b'0{6}([0-9]{6})0+')
+OBSERVATION_HEADER = SAS_HEADER(b'OBS[A-Z0-9]*', b'0+')
 NAMESTR = (
     # all 2-byte fields below are shorts except for nfill
     # the only other number is npos, which is a long
