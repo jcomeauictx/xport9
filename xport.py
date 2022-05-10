@@ -1,4 +1,5 @@
 #!/usr/bin/python3 -OO
+# -*- coding: utf-8 -*-
 '''
 SAS .xpt (transport) versions 8 and 9 converter
 
@@ -33,48 +34,74 @@ import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 
+# python2 compatibility
+try:
+    unichr(42)  # pylint: disable=used-before-assignment
+    # pylint: disable=redefined-builtin, invalid-name
+    OLD_UNICHR = unichr
+    unichr = lambda arg: OLD_UNICHR(arg).encode('utf8')
+    class bytes(str):
+        '''
+        fake `bytes` class to make doctests pass
+        '''
+        def __new__(cls, initial='', encoding='utf8'):
+            logging.log(logging.NOTSET, 'ignoring encoding %s', encoding)
+            if isinstance(initial, list):
+                initial = ''.join(map(chr, initial))
+            return super(bytes, cls).__new__(cls, initial)
+        def __repr__(self):
+            return 'b' + super(bytes, self).__repr__()
+        __str__ = __repr__
+except NameError:
+    # pylint: disable=invalid-name
+    unichr = chr
+try:
+    math.nan
+except AttributeError:
+    math.nan = 'nan'
+
 SAS_EPOCH = datetime(1960, 1, 1)  # beginning of time in SAS
-LIBRARY_HEADER = rb'^HEADER RECORD\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
-REAL_HEADER = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+LIBRARY_HEADER = b'^HEADER RECORD\\*{7}LIB[A-Z0-9]+ HEADER RECORD!{7}0{30} *$'
+REAL_HEADER = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
 MEMBER_HEADER = (
-    rb'^HEADER RECORD\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
+    b'^HEADER RECORD\\*{7}MEM[A-Z0-9]+ +HEADER RECORD!{7}0{16}01600000000140 *$'
 )
 DESCRIPTOR_HEADER = (
-    rb'^HEADER RECORD\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
+    b'^HEADER RECORD\\*{7}DSC[A-Z0-9]+ +HEADER RECORD!{7}0{30} *$'
 )
 # "The data following the DSCPTV8 record allows for a 32-character member name.
 # "In the Version 6-styleformat, the member name was only 8 characters."
-REAL_MEMBER_HEADER_6 = rb'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
-REAL_MEMBER_HEADER_8 = rb'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
-REAL_MEMBER_HEADER2 = rb'^(.{16}) {16}(.{40})(.{8})$'
+REAL_MEMBER_HEADER_6 = b'^(.{8})(.{8})(.{8})(.{8})(.{8}) {24}(.{16})$'
+REAL_MEMBER_HEADER_8 = b'^(.{8})(.{32})(.{8})(.{8})(.{8})(.{16})$'
+REAL_MEMBER_HEADER2 = b'^(.{16}) {16}(.{40})(.{8})$'
 NAMESTR_HEADER = (
-    rb'^HEADER RECORD\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
+    b'^HEADER RECORD\\*{7}NAM[A-Z0-9]+ +HEADER +RECORD!{7}0{6}([0-9]{6})0+ *$'
 )
 OBSERVATION_HEADER = (
-    rb'HEADER RECORD\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
+    b'HEADER RECORD\\*{7}OBS[A-Z0-9]* +HEADER +RECORD!{7}0+ *$'
 )
 NAMESTR = (
     # all 2-byte fields below are shorts except for nfill
     # the only other number is npos, which is a long
     # all the rest are character data or fill
-    rb'^(?P<ntype>.{2})'  # variable type, 1=numeric, 2=char
-    rb'(?P<nhfun>.{2})'   # hash of name (always 0)
-    rb'(?P<nlng>.{2})'    # length of variable in observation
-    rb'(?P<nvar0>.{2})'   # varnum (variable number)
-    rb'(?P<nname>.{8})'   # name of variable
-    rb'(?P<nlabel>.{40})' # label of variable
-    rb'(?P<nform>.{8})'   # name of format
-    rb'(?P<nfl>.{2})'     # format field length
-    rb'(?P<nfd>.{2})'     # format number of decimals
-    rb'(?P<nfj>.{2})'     # justification, 0=left, 1=right
-    rb'(?P<nfill>.{2})'   # unused, for alignment and future
-    rb'(?P<niform>.{8})'  # name of input format
-    rb'(?P<nifl>.{2})'    # informat length attribute
-    rb'(?P<nifd>.{2})'    # informat number of decimals
-    rb'(?P<npos>.{4})'    # position of value in observation
-    rb'(?P<longname>.{32})'  # long name for version 8 style labels
-    rb'(?P<lablen>.{2})'  # length of label
-    rb'(?P<rest>.{18})$'   # "remaining fields are irrelevant"
+    b'^(?P<ntype>.{2})'  # variable type, 1=numeric, 2=char
+    b'(?P<nhfun>.{2})'   # hash of name (always 0)
+    b'(?P<nlng>.{2})'    # length of variable in observation
+    b'(?P<nvar0>.{2})'   # varnum (variable number)
+    b'(?P<nname>.{8})'   # name of variable
+    b'(?P<nlabel>.{40})' # label of variable
+    b'(?P<nform>.{8})'   # name of format
+    b'(?P<nfl>.{2})'     # format field length
+    b'(?P<nfd>.{2})'     # format number of decimals
+    b'(?P<nfj>.{2})'     # justification, 0=left, 1=right
+    b'(?P<nfill>.{2})'   # unused, for alignment and future
+    b'(?P<niform>.{8})'  # name of input format
+    b'(?P<nifl>.{2})'    # informat length attribute
+    b'(?P<nifd>.{2})'    # informat number of decimals
+    b'(?P<npos>.{4})'    # position of value in observation
+    b'(?P<longname>.{32})'  # long name for version 8 style labels
+    b'(?P<lablen>.{2})'  # length of label
+    b'(?P<rest>.{18})$'   # "remaining fields are irrelevant"
 )
 TESTVECTORS = {
     # from PDF referenced above
@@ -117,19 +144,26 @@ def xpt_to_csv(filename=None, outfilename=None):
     '''
     convert xpt file to csv format
     '''
-    # pylint: disable=too-many-locals, too-many-statements  # can't be helped
+    # too many locals and statements can't be helped
+    # pylint: disable=bad-option-value, too-many-locals, too-many-statements
     infile = open(filename, 'rb') if filename is not None else sys.stdin
     outfile = open(outfilename, 'w') if outfilename is not None else sys.stdout
     csvout = csv.writer(outfile)
     document = {'members': []}
     state = 'awaiting_library_header'
     def get_library_header(record):
+        '''
+        helper function to parse library header
+        '''
         pattern = re.compile(LIBRARY_HEADER, re.DOTALL)
         if not pattern.match(record):
             raise ValueError('Invalid library header %r' % record)
         logging.debug('found library header')
         return 'awaiting_real_header'
     def get_real_header(record):
+        '''
+        helper function to parse "real" header
+        '''
         pattern = re.compile(REAL_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -144,21 +178,33 @@ def xpt_to_csv(filename=None, outfilename=None):
         assert document['sas_version'] and document['os']
         return 'awaiting_mtime_header'
     def get_mtime_header(record):
+        '''
+        helper function to parse modification time header
+        '''
         document['modified'] = decode_sas_datetime(record.rstrip().decode())
         return 'awaiting_member_header'
     def get_member_header(record):
+        '''
+        helper function to parse member header
+        '''
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid member header' % record)
         return 'awaiting_member_descriptor'
     def get_descriptor(record):
+        '''
+        helper function to parse descriptor
+        '''
         pattern = re.compile(DESCRIPTOR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
             raise ValueError('%r is not valid descriptor header' % record)
         return 'awaiting_member_data'
     def get_member_data(record, attempt=1):
+        '''
+        helper function to parse member data
+        '''
         if attempt > 2:
             raise ValueError('%r not valid in old or new schema' % record)
         real_header = 'REAL_MEMBER_HEADER_%d' % document['real_version']
@@ -182,12 +228,16 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('member: %s', member)
         if not (member['sas_version'] and member['os']):
             # assume wrong "real" version, and switch
-            document['real_version'] = (6, 8)[document['real_version'] == 6]
+            version = document['real_version']
+            document['real_version'] = 8 if version == 6 else 6
             logging.warning('trying again with version %d',
                             document['real_version'])
             return get_member_data(record, attempt + 1)
         return 'awaiting_second_header'
     def get_second_header(record):
+        '''
+        helper function to parse member modification time and other attributes
+        '''
         pattern = re.compile(REAL_MEMBER_HEADER2, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -205,6 +255,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         ])
         return 'awaiting_namestr_header'
     def get_namestr_header(record):
+        '''
+        helper function to parse namestr header
+        '''
         pattern = re.compile(NAMESTR_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -212,6 +265,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         logging.debug('unknown value in namestr header: %s', match.group(1))
         return 'awaiting_namestr_records'
     def get_namestr_records(record):
+        '''
+        helper function to parse namestr records (spreadsheet column headers)
+        '''
         pattern = re.compile(OBSERVATION_HEADER, re.DOTALL)
         match = pattern.match(record)
         if not match:
@@ -238,6 +294,9 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['recordlength'] = last['npos'] + last['nlng']
         return 'awaiting_observation_records'
     def get_observation_records(record):
+        '''
+        helper function to parse observation records (spreadsheet rows)
+        '''
         pattern = re.compile(MEMBER_HEADER, re.DOTALL)
         match = pattern.match(record)
         member = document['members'][-1]
@@ -364,15 +423,16 @@ def decode_string(string):
 
     may need to try different encodings, but for now assume utf8
 
-    >>> decode_string(b'\0\0\0\0\0    ')
-    ''
-    >>> decode_string(b'ABC 3(*ESC*){unicode 03BC}g')
-    'ABC 3μg'
+    >>> bytes(decode_string(b'\0\0\0\0\0    '), 'utf8')
+    b''
+    >>> bytes(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'), 'utf8')
+    b'ABC 3\xce\xbcg'
     '''
-    decoded = string.rstrip(b'\0 ').decode()
+    stripped = string.rstrip(b'\0 ')
+    decoded = stripped.decode('utf8') if sys.version_info >= (3,) else stripped
     cleaned = re.sub(
         re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
-        lambda match: chr(int(match.group(1), 16)),
+        lambda match: unichr(int(match.group(1), 16)),
         decoded
     )
     return cleaned
