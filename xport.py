@@ -410,7 +410,8 @@ def decode_datetime(rawdatum):
     SAS datetime values are stored internally as the number of seconds
     since midnight 1960-01-01
 
-    example: 0x4871801b5c000000, the 0x71791b5c is the seconds offset
+    example: 0x4871801b5c000000, which is the IBM floating point
+    representation of 1904221020 seconds.
 
     it yields 2020-05-04:14:17:00, which verifies the decode_time logic above,
     since both numbers were from the same document.
@@ -527,7 +528,7 @@ def ibm_to_double(bytestring, pack_output=False):
     if mantissa & bitmask(bits_lost):
         logging.warning('Losing low %d bits %s of %s', bits_lost,
                         bin(mantissa & bitmask(bits_lost)), bin(mantissa))
-    mantissa >>= (IBM.mantissa_bits - IEEE.mantissa_bits)
+    mantissa >>= bits_lost
     repacked = struct.pack('>Q', sign | exponent | mantissa)
     sliced = slice(None) if sys.byteorder == 'big' else slice(None, None, -1)
     return repacked[sliced] if pack_output else struct.unpack('>d', repacked)[0]
