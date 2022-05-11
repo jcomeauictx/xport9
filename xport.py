@@ -37,23 +37,8 @@ logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
 # python2 compatibility
 try:
     unichr(42)  # pylint: disable=used-before-assignment
-    # pylint: disable=redefined-builtin, invalid-name
-    OLD_UNICHR = unichr
-    unichr = lambda arg: OLD_UNICHR(arg).encode('utf8')
-    class bytes(str):
-        '''
-        fake `bytes` class to make doctests pass
-        '''
-        def __new__(cls, initial='', encoding='utf8'):
-            logging.log(logging.NOTSET, 'ignoring encoding %s', encoding)
-            if isinstance(initial, list):
-                initial = ''.join(map(chr, initial))
-            return super(bytes, cls).__new__(cls, initial)
-        def __repr__(self):
-            return 'b' + super(bytes, self).__repr__()
-        __str__ = __repr__
 except NameError:
-    # pylint: disable=invalid-name
+    # pylint: disable=invalid-name, redefined-builtin
     unichr = chr
 
 try:
@@ -322,7 +307,7 @@ def xpt_to_csv(filename=None, outfilename=None):
                 record = member['observations'][:recordlength]
                 data = unpack_record(record, member['names'])
                 member['observations'] = member['observations'][recordlength:]
-                csvout.writerow(data)
+                csvout.writerow(PREPROCESS(data))
             return 'awaiting_observation_records'
         return get_member_header(record)
 
@@ -438,10 +423,10 @@ def decode_string(string):
 
     may need to try different encodings, but for now assume utf8
 
-    >>> bytes(decode_string(b'\0\0\0\0\0    '), 'utf8')
-    b''
-    >>> bytes(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'), 'utf8')
-    b'ABC 3\xce\xbcg'
+    >>> bytearray(decode_string(b'\0\0\0\0\0    '), 'utf8')
+    bytearray(b'')
+    >>> bytearray(decode_string(b'ABC 3(*ESC*){unicode 03BC}g'), 'utf8')
+    bytearray(b'ABC 3\xce\xbcg')
     '''
     stripped = string.rstrip(b'\0 ')
     decoded = stripped.decode('utf8') if sys.version_info >= (3,) else stripped
