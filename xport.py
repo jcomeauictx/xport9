@@ -29,7 +29,7 @@ note on missing values:
     The SAS *source code* representation of the above is dot (.),
     space (' '), and dot-character .A, .B, ..., ._
 '''
-import sys, re, csv  # pylint: disable=multiple-imports
+import sys, os, re, csv  # pylint: disable=multiple-imports
 import struct, math, logging  # pylint: disable=multiple-imports
 from datetime import datetime, timedelta
 logging.basicConfig(level=logging.DEBUG if __debug__ else logging.INFO)
@@ -55,10 +55,24 @@ try:
 except NameError:
     # pylint: disable=invalid-name
     unichr = chr
+
+try:
+    unicode()
+except NameError:
+    # pylint: disable=invalid-name, redefined-builtin
+    unicode = str
+
 try:
     math.nan
 except AttributeError:
     math.nan = 'nan'
+
+try:
+    csv.writer(open(os.devnull, 'w')).writerow([u'\u03bc'])
+    PREPROCESS = lambda array: array
+except UnicodeEncodeError:
+    logging.warning('csv module cannot handle unicode, patching...')
+    PREPROCESS = lambda array: [unicode(item).encode('utf8') for item in array]
 
 if hasattr(sys.stdin, 'buffer'):
     # python3, sys.stdin.buffer is the bytes interface
