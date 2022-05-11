@@ -438,7 +438,7 @@ def decode_string(string):
     bytearray(b'ABC 3\xce\xbcg')
     '''
     stripped = string.rstrip(b'\0 ')
-    decoded = stripped.decode('utf8') if sys.version_info >= (3,) else stripped
+    decoded = stripped.decode('utf8')
     cleaned = re.sub(
         re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
         lambda match: unichr(int(match.group(1), 16)),
