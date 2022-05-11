@@ -57,7 +57,11 @@ try:
     PREPROCESS = lambda array: array
 except UnicodeEncodeError:
     logging.warning('csv module cannot handle unicode, patching...')
-    PREPROCESS = lambda array: [unicode(item).encode('utf8') for item in array]
+    PREPROCESS = lambda array: [
+        item.encode('utf8')
+        if hasattr(item, 'encode') else item
+        for item in array
+    ]
 
 if hasattr(sys.stdin, 'buffer'):
     # python3, sys.stdin.buffer is the bytes interface
@@ -248,11 +252,11 @@ def xpt_to_csv(filename=None, outfilename=None):
         member['dataset_type'] = match.group(3).rstrip().decode()
         logging.debug('member: %s', member)
         # write out a header for the dataset
-        csvout.writerow([
+        csvout.writerow(PREPROCESS([
             '%s (%s)' % (member['dataset_name'], member['dataset_label']),
             'created %s' % member['created'],
             'modified %s' % member['modified'],
-        ])
+        ]))
         return 'awaiting_namestr_header'
     def get_namestr_header(record):
         '''
@@ -288,8 +292,12 @@ def xpt_to_csv(filename=None, outfilename=None):
                         pattern, namestring))
                 member['names'].append(unpack_name(match.groupdict()))
         # write out column headers, short and long form
-        csvout.writerow([name['nname'] for name in member['names']])
-        csvout.writerow([name['nlabel'] for name in member['names']])
+        csvout.writerow(PREPROCESS(
+            [name['nname'] for name in member['names']]
+        ))
+        csvout.writerow(PREPROCESS(
+            [name['nlabel'] for name in member['names']]
+        ))
         last = member['names'][-1]
         member['recordlength'] = last['npos'] + last['nlng']
         return 'awaiting_observation_records'
