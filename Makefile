@@ -4,10 +4,12 @@ TESTS := $(SOURCES:.py=.test)
 PYTHON ?= python3
 PYLINT ?= pylint3
 OUTFILE ?=
+TIMEOUT ?=
 export
 all: test.csv
 %.csv: xport.py %.xpt $(LINT) $(TESTS) .FORCE
-	$(PYTHON) $(OPT) $< $(word 2, $+) $@
+	-$(TIMEOUT) $(PYTHON) $(OPT) $< $(word 2, $+) $@
+	ls -l $@
 %.lint: %.py
 	$(PYLINT) $<
 %.test: %.py
