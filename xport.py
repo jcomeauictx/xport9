@@ -143,6 +143,9 @@ IEEE = type('IEEE', (), {
     'exponent_multiplier': 1,  # every bump in exponent shifts another bit
     'exponent_bias': 1023,
 })
+DOCUMENT = {
+    'encoding': 'utf8',
+}
 
 def xpt_to_csv(filename=None, outfilename=None):
     '''
@@ -430,7 +433,7 @@ def decode_string(string):
     r'''
     clean and decode string (character) data
 
-    may need to try different encodings, but for now assume utf8
+    may need to try different encodings; utf-8 assumed at start
 
     >>> bytearray(decode_string(b'\0\0\0\0\0    '), 'utf8')
     bytearray(b'')
@@ -438,7 +441,12 @@ def decode_string(string):
     bytearray(b'ABC 3\xce\xbcg')
     '''
     stripped = string.rstrip(b'\0 ')
-    decoded = stripped.decode('utf8')
+    try:
+        decoded = stripped.decode(DOCUMENT['encoding'])
+    except UnicodeDecodeError:
+        logging.warning('trying again assuming latin1 encoding')
+        DOCUMENT['encoding'] = 'latin1'
+        return decode_string(string)
     cleaned = re.sub(
         re.compile(r'\(\*ESC\*\)\{unicode ([0-9a-fA-F]+)\}'),
         lambda match: unichr(int(match.group(1), 16)),
